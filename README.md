@@ -1,5 +1,33 @@
 # Day 12 — AI SDLC: Đảo Đèn Lồng
 
+## Chơi Đêm 1 — Đảo Bến
+
+Cần Node.js 22, npm và trình duyệt hỗ trợ WebGL 2. Trong thư mục repo, chạy:
+
+```sh
+npm ci
+npm start
+```
+
+Mở http://127.0.0.1:4173 và chọn **Bắt đầu**. Dùng **WASD** để di chuyển, **←/→** để xoay camera, **Space** để nhảy, **E** để nạp đèn và **Q** để Tỏa Sáng. Nhặt đom đóm bằng cách đi ngang qua. Mỗi đèn cần 6 đom đóm, mỗi lần Tỏa Sáng tốn 2. Đèn sáng tạo vùng an toàn. Thắp cả 5 đèn trước bình minh để thắng. Hết 3 Ngọn Lửa hoặc hết giờ thì thua. Chọn **Chơi lại** ở màn kết quả.
+
+Điểm: +10 mỗi đom đóm nhặt, +100 mỗi đèn thắp, +5 mỗi Bóng Mực bị Tỏa Sáng làm choáng. Khi thắng, cộng 2 điểm cho mỗi giây nguyên còn lại và 50 điểm cho mỗi Ngọn Lửa còn lại. Va chạm không làm rơi đom đóm. Mép đảo giữ người chơi trên đảo, nên Phase 1 chưa có phạt rơi.
+
+### Kiểm chứng Phase 1
+
+```sh
+npm test
+node scripts/headless.mjs --seed 42 --night 1 --ticks 480 --out run.jsonl
+```
+
+CLI chạy bằng Node.js, không cần trình duyệt. Thêm `--scenario file.json` để dựng tình huống, `--inputs file.json` để điều khiển theo tick và `--snapshot-every N` để chọn chu kỳ snapshot. Contract và tuning nằm ở [game.contract.json](game.contract.json). Xem [tiêu chí nghiệm thu và truy vết](docs/phase-1.md) và [bước chuẩn bị](docs/checkpoint-0.md).
+
+### Sáng tạo của tôi
+
+Mây chạy giữa những dải mây trôi quanh đảo. Tỏa Sáng hiện thành vòng ánh vàng và mỗi chiếc đèn được thắp làm tăng ánh sáng môi trường. Các hiệu ứng này nằm trong lớp hiển thị. Bộ test so sánh toàn bộ JSONL của hai lần chạy cùng seed.
+
+---
+
 > **Cá nhân** (1 người / 1 MSSV) · Áp dụng SDLC cùng AI để xây một **game 3D** qua **4 phase**, từ yêu cầu ban đầu tới bản phát hành.
 > **Lab board + trợ giảng:** **[Đảo Đèn Lồng Lab](https://claude.ai/artifact/Q1RYyv1dxjUczzCbd2ZnoW)**
 

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Đảo Đèn Lồng</title>
+  <link rel="stylesheet" href="/src/style.css">
+  <script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script>
+</head>
+<body>
+  <main id="game" aria-label="Đảo Đèn Lồng"></main>
+  <section class="hud" aria-label="Thông tin trận">
+    <div><span>Ngọn lửa</span><strong id="flames"></strong></div>
+    <div><span>Đêm 1 · Đảo Bến</span><strong id="timer"></strong></div>
+    <div><span id="lanterns"></span><strong id="score"></strong></div>
+  </section>
+  <div class="bottom">
+    <div id="prompt" aria-live="polite"></div>
+    <div class="inventory"><span id="motes"></span><span id="pulse"></span></div>
+    <div class="controls">WASD di chuyển · ← → xoay camera · Space nhảy · E nạp đèn · Q tỏa sáng</div>
+  </div>
+  <section id="overlay" class="overlay">
+    <div class="panel">
+      <div class="eyebrow">Đêm 1 · Đảo Bến</div>
+      <h1 id="headline">Đảo Đèn Lồng</h1>
+      <p id="message">Cùng Mây gom đom đóm và thắp năm chiếc đèn trước khi bình minh lên.</p>
+      <button id="play" type="button">Bắt đầu</button>
+    </div>
+  </section>
+  <script type="module" src="/src/browser.mjs"></script>
+</body>
+</html>
