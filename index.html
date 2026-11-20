@@ -10,23 +10,33 @@
 <body>
   <main id="game" aria-label="Đảo Đèn Lồng"></main>
   <section class="hud" aria-label="Thông tin trận">
-    <div><span>Ngọn lửa</span><strong id="flames"></strong></div>
-    <div><span>Đêm 1 · Đảo Bến</span><strong id="timer"></strong></div>
-    <div><span id="lanterns"></span><strong id="score"></strong></div>
+    <div class="hud-group health"><span>Ngọn Lửa</span><strong id="flames"></strong></div>
+    <div class="hud-group clock"><span id="night-label"></span><strong id="timer">05:00</strong></div>
+    <div class="hud-group score"><span id="lanterns"></span><strong id="score">0</strong></div>
   </section>
+  <div id="wind-warning" class="wind-warning" aria-live="polite"></div>
+  <div id="target-arrow" class="target-arrow" aria-hidden="true">➤</div>
   <div class="bottom">
     <div id="prompt" aria-live="polite"></div>
-    <div class="inventory"><span id="motes"></span><span id="pulse"></span></div>
-    <div class="controls">WASD di chuyển · ← → xoay camera · Space nhảy · E nạp đèn · Q tỏa sáng</div>
+    <div class="hud-bottom">
+      <div class="mote-meter"><span>Đom đóm</span><div id="mote-slots" aria-label="Sức chứa đom đóm"></div></div>
+      <div id="abilities" class="abilities"></div>
+    </div>
+    <div class="controls">WASD di chuyển · ← → xoay camera · Space nhảy · Shift lướt · E nạp đèn · Q xua Bóng Mực (tốn 3 đom đóm) · Esc/P tạm dừng</div>
+    <div id="fps" class="fps">FPS --</div>
   </div>
   <section id="overlay" class="overlay">
     <div class="panel">
-      <div class="eyebrow">Đêm 1 · Đảo Bến</div>
+      <div id="eyebrow" class="eyebrow">Đêm 1 · Đảo Bến</div>
       <h1 id="headline">Đảo Đèn Lồng</h1>
-      <p id="message">Cùng Mây gom đom đóm và thắp năm chiếc đèn trước khi bình minh lên.</p>
-      <button id="play" type="button">Bắt đầu</button>
+      <p id="message">Mây cần thắp lại những ngọn đèn trước khi bình minh lên.</p>
+      <div id="settings-panel" class="settings-panel" hidden>
+        <label>Âm lượng <output id="volume-value"></output><input id="volume" type="range" min="0" max="1" step="0.05"></label>
+        <label>Độ nhạy chuột <input id="sensitivity" type="range" min="0.25" max="2" step="0.05"></label>
+      </div>
+      <div id="menu-buttons" class="menu-buttons"></div>
     </div>
   </section>
-  <script type="module" src="/src/browser.mjs"></script>
+  <script type="module" src="/src/browser-v11.mjs"></script>
 </body>
 </html>

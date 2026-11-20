@@ -1,6 +1,7 @@
-export const HZ = 60;
+export * from './game-v11.mjs';
 export const RADIUS = 40;
-export const idle = { move: [0, 0], cam_yaw_deg: 0, jump: false, interact: false, pulse: false };
+const HZ = 60;
+const idle = { move: [0, 0], cam_yaw_deg: 0, jump: false, interact: false, pulse: false };
 const lanternPositions = [[0, 0, 25], [24, 0, 8], [15, 0, -20], [-15, 0, -20], [-24, 0, 8]];
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 const within = (a, b, radius) => distance(a, b) <= radius;
@@ -22,7 +23,7 @@ function ring(count, radius, offset) {
   });
 }
 
-export function createGame(tuning, seed, scenario = {}) {
+function createGame(tuning, seed, scenario = {}) {
   const random = randomSource(seed);
   const lanterns = lanternPositions.map((pos, i) => {
     const id = `L${i + 1}`;
@@ -68,7 +69,7 @@ function addShade(game, pos, id, reserved = new Set()) {
   return id;
 }
 
-export function nearbyLantern(game) {
+function nearbyLantern(game) {
   let nearest;
   let radius = game.tuning.interact_radius;
   for (const lantern of game.lanterns) {
@@ -138,7 +139,7 @@ function moveShades(game, emit) {
   }
 }
 
-export function step(game, input = idle) {
+function step(game, input = idle) {
   if (game.state !== 'playing') return [];
   const { tuning, player } = game;
   game.tick += 1;
@@ -214,7 +215,7 @@ export function step(game, input = idle) {
   }
 }
 
-export function snapshot(game) {
+function snapshot(game) {
   return {
     type: 'snapshot', tick: game.tick, sim_tick: game.tick,
     state: game.state, time_left_s: game.time, score: game.score,

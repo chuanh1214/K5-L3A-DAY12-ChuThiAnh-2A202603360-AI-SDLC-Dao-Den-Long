@@ -1,6 +1,6 @@
 # Day 12 — AI SDLC: Đảo Đèn Lồng
 
-## Chơi Đêm 1 — Đảo Bến
+## Chơi — Ba hòn đảo
 
 Cần Node.js 22, npm và trình duyệt hỗ trợ WebGL 2. Trong thư mục repo, chạy:
 
@@ -9,18 +9,34 @@ npm ci
 npm start
 ```
 
-Mở http://127.0.0.1:4173 và chọn **Bắt đầu**. Dùng **WASD** để di chuyển, **←/→** để xoay camera, **Space** để nhảy, **E** để nạp đèn và **Q** để Tỏa Sáng. Nhặt đom đóm bằng cách đi ngang qua. Mỗi đèn cần 6 đom đóm, mỗi lần Tỏa Sáng tốn 2. Đèn sáng tạo vùng an toàn. Thắp cả 5 đèn trước bình minh để thắng. Hết 3 Ngọn Lửa hoặc hết giờ thì thua. Chọn **Chơi lại** ở màn kết quả.
+Mở http://127.0.0.1:4173, chọn một Đêm đã mở khóa trong danh sách rồi bắt đầu. Đêm tiếp theo được mở khi thắng Đêm trước; tiến trình mở khóa được lưu trên thiết bị. Điều khiển: **WASD** di chuyển, **←/→** hoặc chuột để xoay camera, **Space** nhảy, **Shift** lướt, **E** nạp đèn, **Q** Tỏa Sáng, **Esc/P** tạm dừng. Nhấn chuột vào cảnh để khóa chuột; cài đặt âm lượng và độ nhạy được lưu trên thiết bị.
 
-Điểm: +10 mỗi đom đóm nhặt, +100 mỗi đèn thắp, +5 mỗi Bóng Mực bị Tỏa Sáng làm choáng. Khi thắng, cộng 2 điểm cho mỗi giây nguyên còn lại và 50 điểm cho mỗi Ngọn Lửa còn lại. Va chạm không làm rơi đom đóm. Mép đảo giữ người chơi trên đảo, nên Phase 1 chưa có phạt rơi.
+Để kiểm tra tạm thời cả ba bản đồ mà không đổi tiến trình đã lưu, mở `http://127.0.0.1:4173/?testAllNights=1`.
 
-### Kiểm chứng Phase 1
+Có ba Đêm: Đảo Bến (300 giây, 5 đèn), Đảo Cau (330 giây, 6 đèn) và Đảo Chuông (360 giây, 7 đèn). Mỗi đèn cần 10 đom đóm; sức chứa là 10. Nhặt tự động trong phạm vi XZ 1 m và chênh cao tối đa 1.5 m. Tỏa Sáng tốn 3 đom đóm, tác động trong bán kính 5 m và hồi chiêu 3 giây. Đèn sáng tạo vùng an toàn bán kính 6 m. Mất Ngọn Lửa do Bóng Mực làm rơi một nửa số đom đóm đang mang; rơi khỏi đảo làm mất toàn bộ.
+
+Điểm: +10 mỗi đom đóm **nạp vào đèn**, +100 mỗi đèn thắp, +5 mỗi Bóng Mực trúng Tỏa Sáng. Khi thắng Đêm, cộng 2 điểm cho mỗi giây nguyên còn lại và 50 điểm cho mỗi Ngọn Lửa còn lại. Tổng điểm hành trình là tổng điểm các Đêm đã thắng. Hết Ngọn Lửa thì thua; hết giờ cũng thua nếu chưa thắp hết đèn.
+
+### Kiểm chứng và headless
 
 ```sh
 npm test
 node scripts/headless.mjs --seed 42 --night 1 --ticks 480 --out run.jsonl
 ```
 
-CLI chạy bằng Node.js, không cần trình duyệt. Thêm `--scenario file.json` để dựng tình huống, `--inputs file.json` để điều khiển theo tick và `--snapshot-every N` để chọn chu kỳ snapshot. Contract và tuning nằm ở [game.contract.json](game.contract.json). Xem [tiêu chí nghiệm thu và truy vết](docs/phase-1.md) và [bước chuẩn bị](docs/checkpoint-0.md).
+CLI chạy bằng Node.js, không cần trình duyệt. Thêm `--scenario file.json` để dựng tình huống, `--inputs file.json` để điều khiển theo tick và `--snapshot-every N` để chọn chu kỳ snapshot. Contract và tuning nằm ở [game.contract.json](game.contract.json). Xem [bằng chứng Phase 1](docs/phase-1.md), [tiêu chí Phase 2](docs/phase-2.md) và [bước chuẩn bị](docs/checkpoint-0.md).
+
+Phase 2 contract v1.1:
+
+```sh
+npm test
+node scripts/verify-phase1.mjs
+node scripts/headless.mjs --seed 42 --night 1 --ticks 21600 --out night1.jsonl
+node scripts/headless.mjs --seed 42 --night 2 --ticks 21600 --out night2.jsonl
+node scripts/headless.mjs --seed 42 --night 3 --ticks 21600 --out night3.jsonl
+```
+
+Mỗi lệnh headless dừng khi Đêm kết thúc hoặc tới số tick tối đa. Test đo Đêm headless đầy đủ phải hoàn tất trong 30 giây. Acceptance criteria và bằng chứng Phase 2 ở [docs/phase-2.md](docs/phase-2.md).
 
 ### Sáng tạo của tôi
 

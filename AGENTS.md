@@ -1,7 +1,9 @@
 # Đảo Đèn Lồng
 
-- Cài: `npm ci`. Chơi: `npm start`. Kiểm chứng: `npm test` và `node scripts/hello-headless.mjs`.
-- Trước khi sửa gameplay, đối chiếu tiêu chí nghiệm thu và Test Contract của phase hiện tại. Phase 1 dùng v1.0.
-- Giữ `src/game.mjs` chạy độc lập với DOM, WebGL và đồng hồ thực. Lớp hiển thị và CLI dùng cùng tuning từ `game.contract.json`.
-- Chạy `node scripts/verify-phase1.mjs` trước khi báo hoàn tất Phase 1. Ghi lệnh, kết quả thực tế và các mục chưa kiểm tra vào tài liệu bằng chứng. Không ghi kết quả đạt cho một kiểm tra thất bại.
-- Giữ lại các test còn hiệu lực khi chuyển phase. Ghi lý do khi ticket thay thế luật cũ. Không commit khóa, token, `.env` hoặc `node_modules`.
+- Cài: `npm ci`. Chơi: `npm start`. Test: `npm test`.
+- Phase 2 dùng Ticket-02 và Test Contract v1.1. Đọc `docs/phase-2.md` trước khi đổi gameplay.
+- Giữ mô phỏng trong `src/game.mjs`/`src/game-v11.mjs` độc lập DOM, WebGL và đồng hồ thực; CLI và giao diện dùng `game.contract.json`.
+- Chạy `node scripts/verify-phase1.mjs` để giữ hồi quy Phase 1. Chạy headless đủ đêm để xác nhận ngưỡng 30 giây.
+- Giữ kiểm tra Phase 1 còn hiệu lực; ghi rõ trong `docs/phase-2.md` luật bị Ticket-02 thay thế và lý do cập nhật test.
+- Ghi acceptance criteria, lệnh, kết quả thực tế và mục chưa kiểm tra vào tài liệu bằng chứng. Không tuyên bố đạt nếu chưa có kết quả thật.
+- Không commit khóa, token, `.env`, `node_modules` hoặc output JSONL tạm.
