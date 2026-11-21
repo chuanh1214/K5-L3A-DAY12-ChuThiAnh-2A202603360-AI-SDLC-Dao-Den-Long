@@ -1,6 +1,6 @@
 # Day 12 — AI SDLC: Đảo Đèn Lồng
 
-[Video demo](docs/demo/demo.mp4)
+[Video demo Đêm 1](https://github.com/chuanh1214/K5-L3A-DAY12-ChuThiAnh-2A202603360-AI-SDLC-Dao-Den-Long/releases/download/v1.0.0/demo.mp4)
 
 Game 3D góc nhìn thứ ba. Giúp Mây giữ ba hòn đảo sáng tới bình minh.
 
