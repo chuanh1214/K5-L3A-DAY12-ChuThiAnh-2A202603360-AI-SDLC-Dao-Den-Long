@@ -274,21 +274,78 @@ test('Night 3 has seven lamps and deterministic 30-second wind', t => {
 });
 
 test('Night 3 ramp supports a slightly off-center climb onto the middle tier', t => {
-  const angle = 34 * Math.PI / 180;
-  const start = [29.5 * Math.cos(angle), 0, 29.5 * Math.sin(angle)];
+  const angle = 32 * Math.PI / 180;
+  const start = [30.5 * Math.cos(angle), 0, 30.5 * Math.sin(angle)];
   const climb = execute(t, {
     night: 3,
     scenario: scenarioWith({
       player: { pos: start }, motes: [], shades: [], drifters: [], charms: [], wind_enabled: false
     }),
     frames: [{ tick: 0, move: [-Math.cos(angle), -Math.sin(angle)] }],
-    ticks: 60,
-    snapshotEvery: 60
+    ticks: 70,
+    snapshotEvery: 70
   });
   const player = climb.snapshots.at(-1).player;
   assert.ok(player.grounded);
   assert.ok(Math.hypot(player.pos[0], player.pos[2]) < 24);
   assert.ok(player.pos[1] >= 2.99, JSON.stringify(player));
+});
+
+test('Night 3 walls block entry from below but allow stepping down', t => {
+  for (const { pos, move, dash = false } of [
+    { pos: [0, 0, 25], move: [0, -1], dash: true },
+    { pos: [0, 0, 9], move: [0, -1] },
+    { pos: [27 * Math.sqrt(3) / 2 - 1, 0, 13.5 + Math.sqrt(3)], move: [0.5, -Math.sqrt(3) / 2] },
+    { pos: [0, 6, 3], move: [0, -1] }
+  ]) {
+    const result = execute(t, {
+      night: 3,
+      scenario: scenarioWith({ player: { pos }, motes: [], shades: [], drifters: [], wind_enabled: false }),
+      frames: [{ tick: 0, move, dash }],
+      ticks: 45,
+      snapshotEvery: 45
+    });
+    const end = result.snapshots.at(-1).player.pos;
+    assert.equal(end[1], pos[1]);
+    assert.ok(Math.hypot(end[0] - pos[0], end[2] - pos[2]) <= 0.34, JSON.stringify(end));
+  }
+  const drop = execute(t, {
+    night: 3,
+    scenario: scenarioWith({ player: { pos: [0, 3, 23.5] }, motes: [], shades: [], wind_enabled: false }),
+    frames: [{ tick: 0, move: [0, 1] }],
+    ticks: 45,
+    snapshotEvery: 45
+  });
+  assert.equal(drop.snapshots.at(-1).player.pos[1], 0);
+});
+
+test('Night 3 launch pad reaches the bell platform with and without an air dash', t => {
+  for (const frames of [[], [{ tick: 12, move: [0, -1], dash: true }]]) {
+    const result = execute(t, {
+      night: 3,
+      scenario: scenarioWith({
+        player: { pos: [0, 3, 13] }, motes: [], shades: [], drifters: [], wind_enabled: false
+      }),
+      frames,
+      ticks: 90,
+      snapshotEvery: 1
+    });
+    assert.deepEqual(result.snapshots[1].player.vel, [0, 12, -8]);
+    assert.ok(result.snapshots.some(({ player }) => player.grounded && player.pos[1] === 6));
+  }
+});
+
+test('Night 3 default spawn stays on the ground and can walk out from below the bell platform', t => {
+  const result = execute(t, {
+    night: 3,
+    scenario: scenarioWith({ motes: [], shades: [], drifters: [], charms: [], wind_enabled: false }),
+    frames: [{ tick: 90, move: [0, -1] }],
+    ticks: 190,
+    snapshotEvery: 10
+  });
+  assert.deepEqual(result.snapshots.find(({ tick }) => tick === 90).player.pos, [0, 0, 0]);
+  assert.deepEqual(result.snapshots.at(-1).player.pos, [0, 0, -10]);
+  assert.equal(result.events.some(event => event.name === 'player_hit'), false);
 });
 
 test('motes start at twenty and regenerate at tick 240', t => {

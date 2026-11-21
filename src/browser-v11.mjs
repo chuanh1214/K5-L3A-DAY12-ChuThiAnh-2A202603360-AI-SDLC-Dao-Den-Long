@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createGame, createMap, HZ, nearbyLantern, step } from './game.mjs';
+import { createGame, createMap, floorAt, HZ, nearbyLantern, step } from './game.mjs';
 
 const byId = id => document.getElementById(id);
 const ui = {
@@ -123,6 +123,10 @@ function initScene() {
   player = new THREE.Group();
   scene.add(player);
   addMesh(player, new THREE.CylinderGeometry(0.35, 0.48, 0.85, 9), playerMaterial, 0, 0.6, 0);
+  for (const x of [-0.2, 0.2]) {
+    addMesh(player, new THREE.BoxGeometry(0.22, 0.16, 0.34), materials.wood, x, 0.08, 0.06);
+    addMesh(player, new THREE.CylinderGeometry(0.09, 0.09, 0.19, 8), playerMaterial, x, 0.19, 0);
+  }
   addMesh(player, new THREE.SphereGeometry(0.32, 12, 8), new THREE.MeshStandardMaterial({ color: '#F3C9A0' }), 0, 1.2, 0);
   addMesh(player, new THREE.ConeGeometry(0.68, 0.38, 18), hatMaterial, 0, 1.58, 0);
   addMesh(player, new THREE.CylinderGeometry(0.39, 0.42, 0.13, 9), scarfMaterial, 0, 0.98, 0);
@@ -223,8 +227,14 @@ function buildMap(level) {
   } else {
     circle(mapRoot, 45, -0.65, materials.sand, 0, 0, 1.3);
     circle(mapRoot, 44.5, -0.05, materials.grass, 0, 0, 0.18);
-    const annulus = addMesh(mapRoot, new THREE.RingGeometry(12, 24, 64, 1, Math.PI, Math.PI), materials.sand, 0, 3, 0);
-    annulus.rotation.x = -Math.PI / 2;
+    const terrace = new THREE.Shape();
+    terrace.absarc(0, 0, 24, Math.PI, 2 * Math.PI, false);
+    terrace.absarc(0, 0, 12, 2 * Math.PI, Math.PI, true);
+    terrace.closePath();
+    const middleTier = addMesh(mapRoot, new THREE.ExtrudeGeometry(terrace, {
+      depth: 3, bevelEnabled: false, curveSegments: 64
+    }), materials.sand);
+    middleTier.rotation.x = -Math.PI / 2;
     const annulusGrass = addMesh(mapRoot, new THREE.RingGeometry(12, 23.4, 64, 1, Math.PI, Math.PI), materials.grass, 0, 3.04, 0);
     annulusGrass.rotation.x = -Math.PI / 2;
     circle(mapRoot, 8, 5.85, materials.sand, 0, 0, 0.3);
@@ -234,13 +244,19 @@ function buildMap(level) {
       const angle = degree * Math.PI / 180;
       ramp.position.set(Math.cos(angle) * 27, 1.5, Math.sin(angle) * 27);
       ramp.rotation.y = -angle;
-      const surface = addMesh(ramp, new THREE.BoxGeometry(6, 0.24, 5.3), materials.sand);
-      surface.rotation.z = -Math.atan(0.5);
+      const profile = new THREE.Shape();
+      profile.moveTo(-3.05, -1.5);
+      profile.lineTo(3, -1.5);
+      profile.lineTo(-3, 1.5);
+      profile.lineTo(-3.05, 1.5);
+      profile.closePath();
+      addMesh(ramp, new THREE.ExtrudeGeometry(profile, { depth: 3, bevelEnabled: false }),
+        materials.sand, 0, 0, -1.5);
       mapRoot.add(ramp);
     }
     const tower = new THREE.Group();
     mapRoot.add(tower);
-    addMesh(tower, new THREE.CylinderGeometry(2.4, 2.4, 0.35, 18), materials.wood, 0, 6.15, 0);
+    addMesh(tower, new THREE.CylinderGeometry(2, 2, 0.35, 18), materials.wood, 0, 6.15, 0);
     addMesh(tower, new THREE.CylinderGeometry(2, 2, 8, 18), materials.wood, 0, 10, 0);
     addMesh(tower, new THREE.BoxGeometry(4, 0.3, 0.35), materials.wood, 0, 13.85, 0);
     addMesh(tower, new THREE.CylinderGeometry(0.07, 0.07, 0.45, 8), materials.wood, 0, 13.475, 0);
@@ -248,7 +264,7 @@ function buildMap(level) {
       new THREE.Vector2(0.12, 0), new THREE.Vector2(0.18, 0.12), new THREE.Vector2(0.45, 0.24),
       new THREE.Vector2(0.62, 0.82), new THREE.Vector2(0.58, 1.02), new THREE.Vector2(0.38, 1.02)
     ], 16), materials.bell, 0, 12.68, 0);
-    addMesh(tower, new THREE.SphereGeometry(0.12, 8, 6), materials.wood, 0, 12.54, 0);
+    addMesh(tower, new THREE.SphereGeometry(0.12, 8, 6), materials.wood, 0, 12.58, 0);
   }
   buildScenery(level);
   buildPads(level);
@@ -274,7 +290,8 @@ function buildScenery(level) {
     const z = center[1] + Math.sin(angle) * radius;
     const width = 0.12 + rng(i, 2) * 0.12;
     const height = 0.45 + rng(i, 3) * 0.6;
-    transform.position.set(x, height / 2 + 0.06, z);
+    const ground = level === 3 ? floorAt(game, x, z) : 0.04;
+    transform.position.set(x, ground + height / 2, z);
     transform.rotation.set(0, angle, 0);
     transform.scale.set(width, height, width);
     transform.updateMatrix();
@@ -295,7 +312,7 @@ function buildPads(level) {
   if (level === 3) {
     addMesh(mapRoot, new THREE.CylinderGeometry(1, 1, 0.2, 24),
       new THREE.MeshStandardMaterial({ color: '#F2C14E', emissive: '#FFB347', emissiveIntensity: 0.8 }),
-      0, 3.12, 13);
+      0, 3.1, 13);
   }
 }
 

@@ -3,6 +3,11 @@ export const idle = {
   move: [0, 0], cam_yaw_deg: 0, jump: false, dash: false, interact: false, pulse: false, pause: false
 };
 const radians = degrees => degrees * Math.PI / 180;
+const PLAYER_BODY_RADIUS = 0.68;
+const BODY_EDGE_OFFSETS = Array.from({ length: 16 }, (_, index) => {
+  const angle = index * Math.PI / 8;
+  return [Math.cos(angle) * PLAYER_BODY_RADIUS, Math.sin(angle) * PLAYER_BODY_RADIUS];
+});
 const point = (radius, degrees, x = 0, z = 0, y = 0) => {
   const angle = radians(degrees);
   return [x + radius * Math.cos(angle), y, z + radius * Math.sin(angle)];
@@ -158,7 +163,7 @@ function addCharm(game, patch) {
   });
 }
 
-function floorAt(game, x, z, y) {
+export function floorAt(game, x, z) {
   const r = Math.hypot(x, z);
   if (game.night === 1) return r <= 40 ? 0 : null;
   if (game.night === 2) {
@@ -166,29 +171,31 @@ function floorAt(game, x, z, y) {
     return null;
   }
   if (r > 45) return null;
-  const surfaces = [0];
-  if (z > 0 && r >= 12 && r <= 24) surfaces.push(3);
-  if (r <= 8) surfaces.push(6);
-  const ramp = rampHeightAt(x, z);
-  if (ramp !== null) return ramp;
-  return surfaces.filter(height => height <= y + 0.03).at(-1) ?? 0;
+  return night3SurfaceAt(x, z);
+}
+
+function night3SurfaceAt(x, z) {
+  const radius = Math.hypot(x, z);
+  if (radius <= 8) return 6;
+  if (z > 0 && radius >= 12 && radius <= 24) return 3;
+  return rampHeightAt(x, z) ?? 0;
 }
 
 function rampHeightAt(x, z) {
-  const radius = Math.hypot(x, z);
-  if (radius < 23.8 || radius > 30) return null;
-  const angle = (Math.atan2(z, x) * 180 / Math.PI + 360) % 360;
   for (const rampAngle of [30, 150]) {
-    let delta = Math.abs(angle - rampAngle);
-    delta = Math.min(delta, 360 - delta);
-    if (delta <= radians(5)) return Math.min(3, (30 - radius) / 2);
+    const angle = radians(rampAngle);
+    const along = x * Math.cos(angle) + z * Math.sin(angle);
+    const across = z * Math.cos(angle) - x * Math.sin(angle);
+    if (along >= 23.95 && along <= 30 && Math.abs(across) <= 1.5) {
+      return Math.min(3, (30 - along) / 2);
+    }
   }
   return null;
 }
 
-function supported(game, pos, y = pos[1]) {
-  const height = floorAt(game, pos[0], pos[2], y);
-  return height !== null && Math.abs(height - y) <= 0.05;
+function supported(game, pos) {
+  const height = floorAt(game, pos[0], pos[2]);
+  return height !== null && Math.abs(height - pos[1]) <= 0.05;
 }
 
 function safeAt(game, pos) {
@@ -210,17 +217,48 @@ function moveHorizontal(game, vector, speed) {
   const direction = length ? [vector[0] / length, vector[1] / length] : [0, 0];
   const dx = direction[0] * speed / HZ;
   const dz = direction[1] * speed / HZ;
-  let x = player.pos[0] + dx;
-  let z = player.pos[2] + dz;
-  if (game.night === 3 && Math.hypot(x, z) < 2 && player.pos[1] < 14.5) {
-    const d = Math.hypot(x, z) || 1;
-    x = x / d * 2;
-    z = z / d * 2;
-  }
-  player.pos[0] = x;
-  player.pos[2] = z;
+  player.pos[0] += dx;
+  player.pos[2] += dz;
   player.vel[0] = direction[0] * speed;
   player.vel[2] = direction[1] * speed;
+}
+
+function blockNight3Walls(player, startX, startZ, followsRamp) {
+  const [x, y, z] = player.pos;
+  const rise = night3SurfaceAt(x, z) - y;
+  const stride = Math.hypot(x - startX, z - startZ);
+  const ramp = rampHeightAt(x, z);
+  const previousRamp = rampHeightAt(startX, startZ);
+  const canClimb = followsRamp && (ramp !== null || previousRamp !== null)
+    && rise <= stride / 2 + 0.001;
+  // The default spawn is on the ground below the bell platform.
+  const startRadius = Math.hypot(startX, startZ);
+  const nextRadius = Math.hypot(x, z);
+  const belowBellPlatform = y < 6 && startRadius <= 8 && nextRadius <= 8;
+  const leavingBellPlatform = startRadius < 8 + PLAYER_BODY_RADIUS && nextRadius > startRadius;
+  const hitsTower = y >= 6 && y < 14 && nextRadius < 2 + PLAYER_BODY_RADIUS;
+  const hitsTerrain = BODY_EDGE_OFFSETS.some(([dx, dz]) => {
+    const edgeX = x + dx;
+    const edgeZ = z + dz;
+    const edgeHeight = night3SurfaceAt(edgeX, edgeZ);
+    if (edgeHeight <= y + 0.001) return false;
+    if ((belowBellPlatform || leavingBellPlatform) && edgeHeight === 6) return false;
+    const edgeRamp = rampHeightAt(edgeX, edgeZ);
+    if (edgeRamp !== null && edgeHeight === edgeRamp && followsRamp) {
+      return edgeHeight - y > (stride + PLAYER_BODY_RADIUS) / 2 + 0.001;
+    }
+    // The player's body reaches the terrace before their feet reach the ramp crest.
+    return !(canClimb && ramp !== null && edgeHeight === 3
+      && edgeHeight - y <= (stride + PLAYER_BODY_RADIUS) / 2 + 0.001);
+  });
+  if (hitsTower || hitsTerrain || (rise > 0.001 && !canClimb && !belowBellPlatform)) {
+    player.pos[0] = startX;
+    player.pos[2] = startZ;
+    if (!player.launchLocked) {
+      player.vel[0] = 0;
+      player.vel[2] = 0;
+    }
+  }
 }
 
 function launchPad(game, emit) {
@@ -230,6 +268,7 @@ function launchPad(game, emit) {
     const angle = radians(yaw);
     player.vel[0] = Math.cos(angle) * horizontalSpeed;
     player.vel[2] = Math.sin(angle) * horizontalSpeed;
+    player.launchVelocity = [player.vel[0], player.vel[2]];
     player.vel[1] = verticalSpeed;
     player.grounded = false;
     player.launchLocked = true;
@@ -247,6 +286,7 @@ function movePlayer(game, input, pressed, emit) {
     if (player.respawnTicks === 0) {
       player.pos = [0, 0, 0];
       player.grounded = true;
+      player.launchLocked = false;
       player.invuln = Math.round(tuning.invuln_s * HZ);
       player.justRespawned = true;
     }
@@ -260,6 +300,7 @@ function movePlayer(game, input, pressed, emit) {
     (-x * Math.sin(angle) + z * Math.cos(angle)) / Math.max(1, len)
   ] : [0, 0];
   player.facing = len ? direction : [Math.sin(angle), Math.cos(angle)];
+  const [startX, , startZ] = player.pos;
   let dashing = false;
   if (player.dashTicks > 0) {
     moveHorizontal(game, player.dashDirection, tuning.dash_speed);
@@ -273,6 +314,7 @@ function movePlayer(game, input, pressed, emit) {
     emit('dash', {});
     dashing = true;
   } else if (player.launchLocked) {
+    [player.vel[0], player.vel[2]] = player.launchVelocity;
     player.pos[0] += player.vel[0] / HZ;
     player.pos[2] += player.vel[2] / HZ;
   } else {
@@ -283,30 +325,32 @@ function movePlayer(game, input, pressed, emit) {
     player.pos[0] += Math.cos(windAngle) * 2 / HZ;
     player.pos[2] += Math.sin(windAngle) * 2 / HZ;
   }
+  const followsRamp = game.night === 3 && wasGrounded && !pressed('jump');
+  if (game.night === 3) blockNight3Walls(player, startX, startZ, followsRamp);
+  const ramp = game.night === 3 ? rampHeightAt(player.pos[0], player.pos[2]) : null;
+  if (followsRamp && ramp !== null && player.pos[1] <= 3) {
+    player.pos[1] = night3SurfaceAt(player.pos[0], player.pos[2]);
+    player.vel[1] = 0;
+  }
   if (!dashing) {
     if (pressed('jump') && player.grounded) {
       player.vel[1] = 7;
       player.grounded = false;
     }
     const previousY = player.pos[1];
-    const ramp = game.night === 3 ? rampHeightAt(player.pos[0], player.pos[2]) : null;
-    if (wasGrounded && ramp !== null && !pressed('jump')) {
-      player.pos[1] = ramp;
+    player.vel[1] -= 20 / HZ;
+    player.pos[1] += player.vel[1] / HZ;
+    const surface = floorAt(game, player.pos[0], player.pos[2]);
+    const ground = game.night === 3 && surface !== null && previousY < surface ? 0 : surface;
+    if (ground !== null && player.pos[1] <= ground
+      && (previousY >= ground || (game.night === 3 && ground === 0 && player.vel[1] <= 0))) {
+      player.pos[1] = ground;
       player.vel[1] = 0;
       player.grounded = true;
+      player.launchLocked = false;
     } else {
-      player.vel[1] -= 20 / HZ;
-      player.pos[1] += player.vel[1] / HZ;
-      const ground = floorAt(game, player.pos[0], player.pos[2], previousY);
-      if (ground !== null && player.pos[1] <= ground && previousY >= ground) {
-        player.pos[1] = ground;
-        player.vel[1] = 0;
-        player.grounded = true;
-        player.launchLocked = false;
-      } else {
-        player.grounded = supported(game, player.pos);
-        if (player.grounded) player.vel[1] = 0;
-      }
+      player.grounded = supported(game, player.pos);
+      if (player.grounded) player.vel[1] = 0;
     }
     if (player.grounded) launchPad(game, emit);
   }
@@ -413,7 +457,7 @@ function moveShades(game) {
         const nextX = shade.pos[0] + shade.pushDirection[0] * tuning.pulse_push_m / 15;
         const nextZ = shade.pos[2] + shade.pushDirection[1] * tuning.pulse_push_m / 15;
         const blockedByTower = game.night === 3 && Math.hypot(nextX, nextZ) < 2 && shade.pos[1] < 14;
-        if (!blockedByTower && floorAt(game, nextX, nextZ, shade.pos[1]) !== null) {
+        if (!blockedByTower && floorAt(game, nextX, nextZ) !== null) {
           shade.pos[0] = nextX;
           shade.pos[2] = nextZ;
           shade.stunPushTicks -= 1;
