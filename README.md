@@ -1,5 +1,11 @@
 # Day 12 — AI SDLC: Đảo Đèn Lồng
 
+[Video demo](docs/demo/demo.mp4)
+
+Game 3D góc nhìn thứ ba. Giúp Mây giữ ba hòn đảo sáng tới bình minh.
+
+![Mây vừa thắp đèn ở Đảo Bến](docs/demo/gameplay.png)
+
 ## Chơi — Ba hòn đảo
 
 Cần Node.js 22, npm và trình duyệt hỗ trợ WebGL 2. Trong thư mục repo, chạy:
@@ -28,7 +34,7 @@ node scripts/headless.mjs --seed 42 --night 1 --ticks 480 --out run.jsonl
 
 CLI chạy bằng Node.js, không cần trình duyệt. Thêm `--scenario file.json` để dựng tình huống, `--inputs file.json` để điều khiển theo tick và `--snapshot-every N` để chọn chu kỳ snapshot. Contract và tuning nằm ở [game.contract.json](game.contract.json). Xem [bằng chứng Phase 1](docs/phase-1.md), [tiêu chí Phase 2](docs/phase-2.md) và [bước chuẩn bị](docs/checkpoint-0.md).
 
-Phase 3 dùng Test Contract v1.2.
+Phase 4 dùng Test Contract v1.3. Luật chơi và kết quả Phase 3 được ghi trong [docs/phase-3.md](docs/phase-3.md).
 
 ```sh
 npm test
@@ -38,7 +44,23 @@ node scripts/headless.mjs --seed 42 --night 2 --ticks 16200 --out night2.jsonl
 node scripts/headless.mjs --seed 42 --night 3 --ticks 18000 --out night3.jsonl
 ```
 
-Mỗi lệnh headless dừng khi Đêm kết thúc hoặc tới số tick tối đa. Test chạy Đêm đầy đủ có giới hạn 30 giây. Xem [quyết định và bằng chứng Phase 3](docs/phase-3.md).
+Mỗi lệnh headless dừng khi Đêm kết thúc hoặc tới số tick tối đa. Test chạy Đêm đầy đủ có giới hạn 30 giây.
+
+### Benchmark, soak và bảng xếp hạng
+
+```sh
+node scripts/bench.mjs --seed 42 --duration 30 --out bench.json
+node --expose-gc --jitless --max-semi-space-size=1 scripts/soak.mjs --seed 7 --nights 10 --out soak.json
+npm start -- --export-leaderboard out.json
+```
+
+Benchmark mở Chrome/Chromium trong cửa sổ riêng. Đặt `LANTERN_BROWSER` thành đường dẫn trình duyệt nếu máy dùng vị trí cài đặt riêng. Bản web dùng `requestAnimationFrame`, nên giữ đồng bộ khung hình của trình duyệt và báo `vsync_off: false`. WebGL không cung cấp RSS của toàn bộ tiến trình trình duyệt, nên `peak_mem_mb` là `null`. Tùy chọn `LANTERN_BENCH_HEADLESS=1` dùng SwiftShader để kiểm tra kỹ thuật.
+
+Sau trận thua hoặc khi đến màn Bình Minh, nhập tên gồm 3–12 ký tự ASCII, số hoặc dấu gạch dưới để lưu điểm. Danh sách top 10 nằm trong `.lantern-data/leaderboard.json`. Trong Cài đặt có thể đổi phím, khôi phục mặc định, bật chữ lớn, giảm chuyển động và bảng màu dễ phân biệt.
+
+Bản web đóng gói trong Release chỉ cần Node.js 22. Giải nén, mở thư mục và chạy `node scripts/serve.mjs`, sau đó mở `http://127.0.0.1:4173`.
+
+Kết quả đo, phạm vi đã kiểm chứng và retro nằm trong [docs/phase-4.md](docs/phase-4.md).
 
 ### Sáng tạo của tôi
 

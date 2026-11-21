@@ -217,8 +217,17 @@ function nearestLantern(game) {
 }
 
 function closestLantern(game, pos, accepts) {
-  return game.lanterns.filter(accepts)
-    .sort((a, b) => distXZ(pos, a.pos) - distXZ(pos, b.pos) || a.id.localeCompare(b.id))[0];
+  let closest;
+  let distance = Infinity;
+  for (const lamp of game.lanterns) {
+    if (!accepts(lamp)) continue;
+    const delta = distXZ(pos, lamp.pos);
+    if (delta < distance || (delta === distance && lamp.id < closest.id)) {
+      closest = lamp;
+      distance = delta;
+    }
+  }
+  return closest;
 }
 
 export function nearbyLantern(game) {
@@ -568,7 +577,7 @@ function moveShades(game) {
       else moveEntityAway(shade, player.pos, 2 / HZ);
       continue;
     }
-    const range = distXZ(shade.pos, player.pos);
+    const range = game.benchmark ? Infinity : distXZ(shade.pos, player.pos);
     if (shade.state === 'drain') {
       if (range <= 6) shade.state = 'chase';
       else if (!drainTarget(game, shade)) shade.state = 'wander';
@@ -823,6 +832,24 @@ export function step(game, input = idle) {
     game.state = state;
     emit('game_over', { result: state, reason });
   }
+}
+
+export function createBenchmark(tuning, seed) {
+  const random = randomSource(seed);
+  const positions = (count, radius) => Array.from({ length: count }, (_, index) =>
+    point(radius * Math.sqrt((index + random()) / count), index * 137.507764 + random() * 5));
+  const game = createGame(tuning, seed, 1, {
+    motes: positions(100, 39),
+    shades: positions(200, 39).map(pos => ({ pos, state: 'wander' })),
+    lanterns: ['L1', 'L2', 'L3'].map(id => ({ id, lit: true }))
+  });
+  game.benchmark = true;
+  return game;
+}
+
+export function stepBenchmark(game) {
+  game.simTick += 1;
+  moveShades(game);
 }
 
 export function snapshot(game) {

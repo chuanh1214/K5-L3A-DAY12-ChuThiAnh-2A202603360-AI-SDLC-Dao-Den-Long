@@ -1,4 +1,5 @@
 :root {
+  font-size: 18px;
   color-scheme: dark;
   font-family: system-ui, sans-serif;
   color: #F5F1E6;
@@ -7,6 +8,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; overflow: hidden; }
+:root.large-text { font-size: 22.5px; }
 #game, canvas { width: 100vw; height: 100dvh; display: block; }
 .hud {
   position: fixed;
@@ -19,7 +21,7 @@ body { margin: 0; overflow: hidden; }
 .hud-group { display: grid; gap: 5px; text-shadow: 0 2px 12px #080B18; }
 .hud-group span, .eyebrow, .mote-meter > span {
   color: #F2C14E;
-  font-size: .76rem;
+  font-size: 1rem;
   letter-spacing: .1em;
   text-transform: uppercase;
 }
@@ -51,11 +53,11 @@ body { margin: 0; overflow: hidden; }
 #mote-slots { display: flex; gap: 4px; }
 .mote-slot { width: 17px; height: 13px; border: 1px solid #FFE58A99; border-radius: 4px; }
 .mote-slot.filled { border-color: #FFF6C2; background: #FFE58A; box-shadow: 0 0 10px #FFE58A; }
-.abilities { display: grid; gap: 5px; text-align: right; font-size: .82rem; }
+.abilities { display: grid; gap: 5px; text-align: right; }
 .abilities span { color: #FFE9B0; }
 .abilities .cooldown { color: #8FA3B8; }
-.controls { max-width: 95vw; font-size: .75rem; color: #F5F1E6; }
-.fps { position: fixed; right: 12px; bottom: 10px; padding: 3px 7px; color: #F5F1E6AA; font-size: .65rem; }
+.controls { max-width: 95vw; color: #F5F1E6; }
+.fps { position: fixed; right: 12px; top: 100px; padding: 3px 7px; color: #F5F1E6AA; }
 .overlay {
   position: fixed;
   inset: 0;
@@ -108,6 +110,16 @@ button:focus-visible { outline: 3px solid #FFE9B0; outline-offset: 4px; }
 .settings-panel output { color: #F2C14E; font-variant-numeric: tabular-nums; }
 .settings-panel input { grid-column: 1 / -1; width: 100%; accent-color: #FFB347; }
 .settings-panel input[type="checkbox"] { grid-column: 2; width: auto; }
+.reduced-motion .urgent { animation: none; }
+#bindings { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+#bindings button { min-width: 0; padding: 6px; }
+#binding-status, #save-status { min-height: 1.5em; }
+#save-score input { max-width: 100%; font: inherit; margin: 10px; }
+#leaderboard { text-align: left; font-variant-numeric: tabular-nums; }
+.subtitles { position: fixed; top: 128px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; }
+.subtitles:not(:empty) { background: #1B2350EF; padding: 8px 14px; border-radius: 10px; }
+.shade-arrow { color: #B68BFF; filter: none; }
+.accessible-palette .shade-arrow { color: #00B3FF; }
 .target-arrow {
   position: fixed;
   z-index: 1;

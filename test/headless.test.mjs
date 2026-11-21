@@ -5,11 +5,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { createBenchmark, stepBenchmark } from '../src/game.mjs';
 
 const cli = fileURLToPath(new URL('../scripts/headless.mjs', import.meta.url));
 const { contract_version, tuning } = JSON.parse(readFileSync(new URL('../game.contract.json', import.meta.url), 'utf8'));
 const emptyIsland = { random_motes: false, random_shades: false, random_drifters: false };
 const scenarioWith = options => ({ ...emptyIsland, ...options });
+
+test('benchmark keeps the standard entity counts and fuel while wander advances', () => {
+  const game = createBenchmark(tuning, 42);
+  assert.equal(game.shades.length, 200);
+  assert.equal(game.motes.length, 100);
+  assert.deepEqual(game.lanterns.filter(lamp => lamp.lit).map(lamp => lamp.id), ['L1', 'L2', 'L3']);
+  const before = game.shades.map(shade => [...shade.pos]);
+  const fuel = game.lanterns.map(lamp => lamp.fuelUnits);
+  for (let tick = 0; tick < 300; tick += 1) stepBenchmark(game);
+  assert.deepEqual(game.player.pos, [0, 0, 0]);
+  assert.equal(game.player.flames, 3);
+  assert.equal(game.motes.length, 100);
+  assert.equal(game.state, 'playing');
+  assert.deepEqual(game.lanterns.map(lamp => lamp.fuelUnits), fuel);
+  assert.ok(game.shades.every(shade => shade.state === 'wander'));
+  assert.notDeepEqual(game.shades.map(shade => shade.pos), before);
+});
 
 function execute(t, { scenario, frames, ticks = 120, seed = 42, night = 1, snapshotEvery = 1 } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'lantern-test-'));
@@ -65,7 +83,7 @@ test('an idle dash follows the updated facing direction', t => {
 });
 
 test('contract tuning and deposit scores only delivered motes', t => {
-  assert.equal(contract_version, '1.2');
+  assert.equal(contract_version, '1.3');
   assert.equal(tuning.lantern_cost, 10);
   assert.equal(tuning.pickup_radius, 1);
   assert.equal(tuning.dash_speed, 14);

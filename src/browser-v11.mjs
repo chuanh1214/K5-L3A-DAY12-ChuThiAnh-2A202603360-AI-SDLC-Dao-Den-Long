@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { carryCapacity, createGame, createMap, floorAt, HZ, lanternCost, lanternFuel, nearbyLantern, step } from './game.mjs';
+import { carryCapacity, createBenchmark, createGame, floorAt, HZ, lanternCost, lanternFuel, nearbyLantern, step, stepBenchmark } from './game.mjs';
 
 const byId = id => document.getElementById(id);
 const ui = {
@@ -19,11 +19,23 @@ const nightInfo = [
 ];
 const settings = {
   accessiblePalette: localStorage.getItem('lantern-accessible-palette') === 'true',
+  reducedMotion: localStorage.getItem('lantern-reduced-motion') === 'true',
+  largeText: localStorage.getItem('lantern-large-text') === 'true',
   volume: Number(localStorage.getItem('lantern-volume') ?? 0.45),
   sensitivity: Number(localStorage.getItem('lantern-sensitivity') ?? 0.8)
 };
 const savedUnlockedNight = Number.parseInt(localStorage.getItem('lantern-unlocked-night') ?? '1', 10);
 const testAllNights = new URLSearchParams(location.search).get('testAllNights') === '1';
+const benchParams = new URLSearchParams(location.search);
+const benchmark = benchParams.has('bench') ? {
+  seed: Number(benchParams.get('seed')), duration: Number(benchParams.get('duration')) * 1000, times: []
+} : null;
+function reportBenchmark(data) {
+  return fetch('/api/benchmark', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+  }).catch(console.error);
+}
+if (benchmark) window.addEventListener('error', event => reportBenchmark({ error: event.message }));
 let highestUnlockedNight = testAllNights ? 3
   : Number.isInteger(savedUnlockedNight) && savedUnlockedNight >= 1 && savedUnlockedNight <= 3
     ? savedUnlockedNight : 1;
@@ -47,6 +59,10 @@ let mapRoot;
 let game;
 let night = 1;
 let totalScore = 0;
+let nightsWon = 0;
+let runSeed;
+let shadeNotice;
+let capturingKey;
 let scoreBase = 0;
 let active = false;
 let yaw = 0;
@@ -66,10 +82,24 @@ let dashAbility;
 let pulseAbility;
 const keys = new Set();
 const taps = new Set();
-const controls = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft',
-  'ShiftRight', 'KeyE', 'KeyQ', 'Escape', 'KeyP'
-]);
+const defaultBindings = { forward: 'KeyW', left: 'KeyA', back: 'KeyS', right: 'KeyD',
+  jump: 'Space', dash: 'ShiftLeft', interact: 'KeyE', pulse: 'KeyQ', pause: 'Escape' };
+const actionLabels = { forward: 'Tiến', left: 'Trái', back: 'Lùi', right: 'Phải',
+  jump: 'Nhảy', dash: 'Lướt', interact: 'Nạp đèn', pulse: 'Tỏa Sáng', pause: 'Tạm dừng' };
+let bindings = { ...defaultBindings };
+try {
+  const saved = JSON.parse(localStorage.getItem('lantern-bindings'));
+  if (saved) for (const action of Object.keys(bindings)) {
+    if (typeof saved[action] === 'string') bindings[action] = saved[action];
+  }
+} catch {}
+const codesFor = action => {
+  if (action === 'pause' && bindings.pause === 'Escape' && !Object.values(bindings).includes('KeyP')) return ['Escape', 'KeyP'];
+  if (action === 'dash' && bindings.dash === 'ShiftLeft' && !Object.values(bindings).includes('ShiftRight')) return ['ShiftLeft', 'ShiftRight'];
+  return [bindings[action]];
+};
+const activeKey = (action, source = keys) => codesFor(action).some(code => source.has(code));
+const keyName = code => code.replace(/^Key|^Digit/, '').replace(/Left$|Right$/, match => code.startsWith('Shift') ? '' : match);
 const objects = { motes: new Map(), shades: new Map(), drifters: new Map(), charms: new Map(), lamps: new Map() };
 const materials = {};
 
@@ -88,8 +118,17 @@ async function load() {
   pulseAbility = document.createElement('span');
   ui.abilities.replaceChildren(dashAbility, pulseAbility);
   initScene();
-  showMenu();
-  requestAnimationFrame(frame);
+  initAccessibility();
+  byId('save-score').addEventListener('submit', saveScore);
+  if (benchmark) {
+    game = createBenchmark(tuning, benchmark.seed);
+    buildMap(1);
+    ui.overlay.hidden = true;
+    requestAnimationFrame(benchmarkFrame);
+  } else {
+    showMenu();
+    requestAnimationFrame(frame);
+  }
 }
 
 function initScene() {
@@ -186,22 +225,79 @@ function addMesh(parent, geometry, material, x = 0, y = 0, z = 0) {
 }
 
 function onKeyDown(event) {
-  if (!controls.has(event.code)) return;
-  event.preventDefault();
-  if (game?.state === 'paused' && ['Escape', 'KeyP'].includes(event.code)) {
+  if (capturingKey) {
+    event.preventDefault();
+    if (event.repeat) return;
+    const duplicate = Object.keys(bindings).find(action => action !== capturingKey && bindings[action] === event.code);
+    if (duplicate || ['ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].includes(event.code)) {
+      byId('binding-status').textContent = duplicate ? `Phím đã dùng cho ${actionLabels[duplicate]}.` : 'Phím dành cho camera hoặc điều hướng.';
+      return;
+    }
+    if (!event.code || event.code === 'Unidentified') return;
+    bindings[capturingKey] = event.code;
+    capturingKey = undefined;
+    localStorage.setItem('lantern-bindings', JSON.stringify(bindings));
+    renderBindings('Đã lưu phím mới.');
+    return;
+  }
+  if (event.target instanceof HTMLInputElement) return;
+  const pause = codesFor('pause').includes(event.code);
+  if (game?.state === 'paused' && pause && ui.settings.hidden) {
+    event.preventDefault();
     if (!event.repeat) resumeGame();
     return;
   }
-  if (!active && !['Escape', 'KeyP'].includes(event.code)) return;
+  if (!active || !['ArrowLeft', 'ArrowRight', ...Object.keys(bindings).flatMap(codesFor)].includes(event.code)) return;
+  event.preventDefault();
   keys.add(event.code);
   if (!event.repeat) taps.add(event.code);
 }
 
+function initAccessibility() {
+  for (const [property, id] of [['reducedMotion', 'reduced-motion'], ['largeText', 'large-text']]) {
+    const input = byId(id);
+    const apply = () => document.documentElement.classList.toggle(id, settings[property]);
+    input.checked = settings[property];
+    apply();
+    input.addEventListener('change', () => {
+      settings[property] = input.checked;
+      localStorage.setItem(`lantern-${id}`, String(input.checked));
+      apply();
+    });
+  }
+  byId('reset-bindings').addEventListener('click', () => {
+    capturingKey = undefined;
+    bindings = { ...defaultBindings };
+    localStorage.removeItem('lantern-bindings');
+    renderBindings('Đã khôi phục phím mặc định.');
+  });
+  renderBindings();
+}
+
+function renderBindings(message = '') {
+  const buttons = Object.entries(actionLabels).map(([action, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'secondary';
+    button.textContent = `${label} · ${codesFor(action).map(keyName).join('/')}`;
+    button.addEventListener('click', () => {
+      capturingKey = action;
+      byId('binding-status').textContent = `Nhấn phím cho ${label}.`;
+    });
+    return button;
+  });
+  byId('bindings').replaceChildren(...buttons);
+  byId('binding-status').textContent = message;
+  byId('controls').textContent = `${['forward', 'left', 'back', 'right'].map(action => keyName(bindings[action])).join(' ')} di chuyển · ← → camera · ${['jump', 'dash', 'interact', 'pulse', 'pause'].map(action => `${codesFor(action).map(keyName).join('/')} ${actionLabels[action].toLowerCase()}`).join(' · ')}`;
+}
+
 function resize() {
   if (!renderer) return;
-  camera.aspect = innerWidth / innerHeight;
+  const width = benchmark ? 1280 : innerWidth;
+  const height = benchmark ? 720 : innerHeight;
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(width, height);
 }
 
 function clearGroup(group) {
@@ -225,7 +321,6 @@ function circle(parent, radius, y, material, x = 0, z = 0, depth = 1.5) {
 
 function buildMap(level) {
   clearGroup(mapRoot);
-  const map = createMap(level);
   const sky = addMesh(mapRoot, new THREE.CylinderGeometry(150, 150, 1, 32), materials.sea, 0, -16, 0);
   sky.receiveShadow = true;
   if (level === 1) {
@@ -392,10 +487,10 @@ function syncScene(now) {
   if (!game) return;
   const { pos, invuln } = game.player;
   player.position.set(...pos);
-  player.visible = !invuln || Math.floor(now / 90) % 2 === 0;
-  const walking = active && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(key => keys.has(key));
-  player.rotation.y = yaw + (walking ? Math.atan2(Number(keys.has('KeyA')) - Number(keys.has('KeyD')),
-    Number(keys.has('KeyW')) - Number(keys.has('KeyS'))) : 0);
+  player.visible = settings.reducedMotion || !invuln || Math.floor(now / 90) % 2 === 0;
+  const walking = active && ['forward', 'left', 'back', 'right'].some(action => activeKey(action));
+  player.rotation.y = yaw + (walking ? Math.atan2(Number(activeKey('left')) - Number(activeKey('right')),
+    Number(activeKey('forward')) - Number(activeKey('back'))) : 0);
   syncEntities(game.motes, objects.motes, () => {
     const mote = new THREE.Group();
     addMesh(mote, new THREE.IcosahedronGeometry(0.16, 1), materials.mote);
@@ -445,7 +540,7 @@ function syncScene(now) {
     const view = objects.lamps.get(lamp.id);
     const fuel = lanternFuel(lamp);
     const low = lamp.lit && fuel < tuning.low_fuel_threshold;
-    const bright = !low || now % 1000 < 500;
+    const bright = settings.reducedMotion || !low || now % 1000 < 500;
     view.body.material = lamp.lit && bright ? materials.lampOn : materials.lampOff;
     view.paper.scale.y = lamp.lit ? 1 : 0.8;
     view.tear.visible = !lamp.lit;
@@ -459,7 +554,7 @@ function syncScene(now) {
   }
   ambient.intensity = 0.15 + 0.55 * lit / game.lanterns.length;
   const pulseAge = (now - pulseAt) / 440;
-  pulseRing.visible = pulseAge >= 0 && pulseAge < 1;
+  pulseRing.visible = !settings.reducedMotion && pulseAge >= 0 && pulseAge < 1;
   if (pulseRing.visible) {
     pulseRing.position.set(pos[0], pos[1] + 0.12, pos[2]);
     pulseRing.scale.setScalar(Math.max(0.05, pulseAge * tuning.pulse_radius));
@@ -494,33 +589,47 @@ function updateHud(lit) {
   if (near && active) {
     const cost = lanternCost(tuning, near);
     prompts.push(near.lit
-      ? `E — Châm dầu · ${near.id} còn ${Math.floor(lanternFuel(near))}/${tuning.fuel_max}`
-      : `E — ${near.ever_lit ? 'Thắp lại' : 'Nạp ánh sáng'} · ${near.id} ${near.deposited}/${cost}`);
+      ? `${keyName(bindings.interact)} — Châm dầu · ${near.id} còn ${Math.floor(lanternFuel(near))}/${tuning.fuel_max}`
+      : `${keyName(bindings.interact)} — ${near.ever_lit ? 'Thắp lại' : 'Nạp ánh sáng'} · ${near.id} ${near.deposited}/${cost}`);
   }
   ui.prompt.textContent = prompts.join(' · ');
   const cycle = game.simTick % 1800;
   const warning = game.night === 3 && cycle >= 1680 && cycle < 1800;
-  ui.wind.textContent = warning ? '🍃 Lá bay báo trước: gió mạnh sắp đến 🍃' : game.wind.active ? 'Gió mạnh đang thổi' : '';
+  const windMessage = warning ? '🍃 Lá bay báo trước: gió mạnh sắp đến 🍃' : game.wind.active ? 'Gió mạnh đang thổi' : '';
+  if (ui.wind.textContent !== windMessage) ui.wind.textContent = windMessage;
   ui.wind.classList.toggle('visible', Boolean(ui.wind.textContent));
+  const notices = [];
+  const low = game.lanterns.filter(lamp => lamp.lit && lanternFuel(lamp) < tuning.low_fuel_threshold);
+  if (low.length) notices.push(`Đèn sắp cạn dầu (${low.map(lamp => lamp.id).join(', ')})`);
+  if (remaining <= 10 && remaining > 0) notices.push(`Còn ${remaining} giây`);
+  const newShade = shadeNotice && game.simTick < shadeNotice.until && shadeNotice.pos;
+  if (newShade) notices.push('Bóng Mực xuất hiện');
+  const message = active ? notices.join(' · ') : '';
+  if (byId('subtitles').textContent !== message) byId('subtitles').textContent = message;
+  positionArrow(byId('shade-arrow'), newShade, 1, true);
   updateTarget();
 }
 
 function updateTarget() {
   const target = game.lanterns.filter(lamp => !lamp.lit || lanternFuel(lamp) < tuning.low_fuel_threshold)
     .sort((a, b) => distanceXZ(game.player.pos, a.pos) - distanceXZ(game.player.pos, b.pos))[0];
-  if (!target) {
-    ui.target.hidden = true;
-    return;
-  }
-  const projected = new THREE.Vector3(target.pos[0], target.pos[1] + 2.4, target.pos[2]).project(camera);
+  positionArrow(ui.target, target?.pos, 2.4);
+}
+
+function positionArrow(arrow, pos, height, alwaysAtEdge = false) {
+  arrow.hidden = !pos || !active;
+  if (arrow.hidden) return;
+  const projected = new THREE.Vector3(pos[0], pos[1] + height, pos[2]).project(camera);
   const offscreen = projected.z < -1 || projected.z > 1 || Math.abs(projected.x) > 0.88 || Math.abs(projected.y) > 0.86;
-  ui.target.hidden = !offscreen || !active;
-  if (!offscreen) return;
-  const x = Math.max(5, Math.min(95, (projected.x + 1) * 50));
-  const y = Math.max(12, Math.min(82, (1 - projected.y) * 50));
-  ui.target.style.left = `${x}%`;
-  ui.target.style.top = `${y}%`;
-  ui.target.style.transform = `translate(-50%, -50%) rotate(${Math.atan2(-projected.y, projected.x) * 180 / Math.PI}deg)`;
+  arrow.hidden = !offscreen && !alwaysAtEdge;
+  if (arrow.hidden) return;
+  const sign = projected.z > 1 ? -1 : 1;
+  const dx = sign * projected.x;
+  const dy = -sign * projected.y;
+  const scale = alwaysAtEdge ? 1 / Math.max(Math.abs(dx), Math.abs(dy), 0.001) : 1;
+  arrow.style.left = `${Math.max(5, Math.min(95, 50 + dx * scale * 45))}%`;
+  arrow.style.top = `${Math.max(12, Math.min(82, 50 + dy * scale * 38))}%`;
+  arrow.style.transform = `translate(-50%, -50%) rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
 }
 
 function distanceXZ(a, b) {
@@ -529,6 +638,11 @@ function distanceXZ(a, b) {
 
 function showOverlay(title, message, buttons, { eyebrow = '', showSettings = false } = {}) {
   active = false;
+  capturingKey = undefined;
+  byId('leaderboard').hidden = true;
+  byId('save-score').hidden = true;
+  byId('shade-arrow').hidden = true;
+  byId('subtitles').textContent = '';
   keys.clear();
   taps.clear();
   if (document.pointerLockElement) document.exitPointerLock();
@@ -553,6 +667,8 @@ function showOverlay(title, message, buttons, { eyebrow = '', showSettings = fal
 
 function showMenu() {
   totalScore = 0;
+  nightsWon = 0;
+  runSeed = undefined;
   scoreBase = 0;
   night = 1;
   game = undefined;
@@ -569,6 +685,7 @@ function showMenu() {
   });
   showOverlay('Đảo Đèn Lồng', 'Chọn Đêm đã mở khóa. Hoàn thành một Đêm để mở khóa Đêm tiếp theo.', [
     ...nightButtons,
+    { label: 'Bảng xếp hạng', action: showLeaderboard, secondary: true },
     { label: 'Cài đặt', action: showSettings, secondary: true }
   ], { eyebrow: `Đã mở khóa ${highestUnlockedNight}/3 Đêm` });
 }
@@ -589,7 +706,10 @@ function showIntro(level) {
 function startNight(level) {
   night = level;
   scoreBase = totalScore;
-  game = createGame(tuning, 1212 + level, level);
+  const seed = 1212 + level;
+  runSeed ??= seed;
+  game = createGame(tuning, seed, level);
+  shadeNotice = undefined;
   yaw = 0;
   elapsed = 0;
   lastCountdown = 11;
@@ -619,6 +739,7 @@ function showResult() {
   const info = nightInfo[night - 1];
   if (won) {
     totalScore += game.score;
+    nightsWon += 1;
     if (night < 3 && highestUnlockedNight < night + 1) {
       highestUnlockedNight = night + 1;
       localStorage.setItem('lantern-unlocked-night', String(highestUnlockedNight));
@@ -629,6 +750,7 @@ function showResult() {
       { label: `Chơi lại Đêm ${night}`, action: () => showIntro(night) },
       { label: 'Về menu', action: showMenu, secondary: true }
     ], { eyebrow: info.title });
+    showScoreForm();
     return;
   }
   if (night < 3) {
@@ -639,9 +761,56 @@ function showResult() {
     return;
   }
   showOverlay('Bình Minh', `Ba hòn đảo đã sáng. Tổng điểm hành trình: ${totalScore}.`, [
-    { label: 'Chơi lại hành trình', action: () => { totalScore = 0; showIntro(1); } },
+    { label: 'Chơi lại hành trình', action: () => { totalScore = 0; nightsWon = 0; runSeed = undefined; showIntro(1); } },
     { label: 'Về menu', action: showMenu, secondary: true }
   ], { eyebrow: 'Đêm 3 hoàn tất' });
+  showScoreForm();
+}
+
+function showScoreForm() {
+  const form = byId('save-score');
+  form.reset();
+  form.querySelector('button').disabled = false;
+  byId('save-status').textContent = '';
+  form.hidden = false;
+}
+
+async function saveScore(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button');
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/leaderboard', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: new FormData(form).get('name'), score: totalScore, nights_won: nightsWon, seed: runSeed })
+    });
+    if (!response.ok) throw new Error();
+    byId('save-status').textContent = 'Đã lưu điểm.';
+  } catch {
+    byId('save-status').textContent = 'Chưa lưu được điểm. Hãy thử lại.';
+    button.disabled = false;
+  }
+}
+
+async function showLeaderboard() {
+  showOverlay('Bảng xếp hạng', 'Đang tải…', [{ label: 'Về menu', action: showMenu }]);
+  try {
+    const response = await fetch('/api/leaderboard');
+    if (!response.ok) throw new Error();
+    const { entries } = await response.json();
+    if (ui.headline.textContent !== 'Bảng xếp hạng') return;
+    const list = byId('leaderboard');
+    list.replaceChildren(...entries.map(entry => {
+      const item = document.createElement('li');
+      item.textContent = `${entry.name} · ${entry.score} điểm · ${entry.nights_won}/3 Đêm`;
+      return item;
+    }));
+    list.hidden = entries.length === 0;
+    ui.message.textContent = entries.length ? '' : 'Chưa có điểm nào.';
+  } catch {
+    if (ui.headline.textContent === 'Bảng xếp hạng') ui.message.textContent = 'Chưa tải được bảng xếp hạng.';
+  }
 }
 
 function showPause() {
@@ -746,6 +915,10 @@ function handleEvents(events) {
       || event.name === 'player_hit' || event.name === 'dash' || event.name === 'shade_spawned'
       || event.name === 'charm_picked' || event.name === 'deposit' || event.name === 'refuel') sound(event.name);
     if (event.name === 'pulse') pulseAt = performance.now();
+    if (event.name === 'shade_spawned') {
+      const shade = game.shades.find(item => item.id === event.data.id);
+      if (shade) shadeNotice = { pos: [...shade.pos], until: game.simTick + 3 * HZ };
+    }
     if (event.name === 'paused') showPause();
     if (event.name === 'game_over') {
       sound(game.state === 'won' ? 'won' : 'lost');
@@ -763,15 +936,14 @@ function frame(now) {
       elapsed -= 1 / HZ;
       yaw += (Number(keys.has('ArrowLeft')) - Number(keys.has('ArrowRight'))) * 1.8 / HZ;
       // With +Z forward, screen-right is -X, so invert the lateral key axis.
-      const x = Number(keys.has('KeyA')) - Number(keys.has('KeyD'));
-      const z = Number(keys.has('KeyW')) - Number(keys.has('KeyS'));
-      const jump = keys.has('Space') || taps.has('Space');
-      if (taps.has('Space') && game.player.grounded) sound('jump');
+      const x = Number(activeKey('left')) - Number(activeKey('right'));
+      const z = Number(activeKey('forward')) - Number(activeKey('back'));
+      const pressed = action => activeKey(action) || activeKey(action, taps);
+      if (activeKey('jump', taps) && game.player.grounded) sound('jump');
       const events = step(game, {
         move: [x, z], cam_yaw_deg: yaw * 180 / Math.PI,
-        jump, dash: keys.has('ShiftLeft') || keys.has('ShiftRight') || taps.has('ShiftLeft') || taps.has('ShiftRight'),
-        interact: keys.has('KeyE') || taps.has('KeyE'), pulse: keys.has('KeyQ') || taps.has('KeyQ'),
-        pause: taps.has('Escape') || taps.has('KeyP')
+        jump: pressed('jump'), dash: pressed('dash'), interact: pressed('interact'), pulse: pressed('pulse'),
+        pause: activeKey('pause', taps)
       });
       taps.clear();
       handleEvents(events);
@@ -795,7 +967,35 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+function benchmarkFrame(now) {
+  const first = benchmark.first ??= now;
+  const last = benchmark.last ?? now;
+  benchmark.last = now;
+  elapsed += (now - last) / 1000;
+  while (elapsed >= 1 / HZ) {
+    stepBenchmark(game);
+    elapsed -= 1 / HZ;
+  }
+  syncScene(now);
+  const angle = (now - first) / 15000 * 2 * Math.PI;
+  camera.position.set(30 * Math.cos(angle), 15, 30 * Math.sin(angle));
+  camera.lookAt(0, 0, 0);
+  for (const lamp of objects.lamps.values()) lamp.meter.quaternion.copy(camera.quaternion);
+  renderer.render(scene, camera);
+  benchmark.loadedAt ??= Date.now();
+  if (now - first >= 3000 && now > last) benchmark.times.push(now - last);
+  if (now - first < 3000 + benchmark.duration) {
+    requestAnimationFrame(benchmarkFrame);
+  } else {
+    reportBenchmark({
+        loadedAt: benchmark.loadedAt, times: benchmark.times,
+        width: innerWidth, height: innerHeight, renderer: `Three.js r${THREE.REVISION} WebGL2`
+    });
+  }
+}
+
 load().catch(error => {
+  if (benchmark) reportBenchmark({ error: String(error) });
   ui.headline.textContent = 'Không mở được game';
   ui.message.textContent = 'Kiểm tra trình duyệt WebGL 2, kết nối và cấu hình game.';
   ui.buttons.replaceChildren();
