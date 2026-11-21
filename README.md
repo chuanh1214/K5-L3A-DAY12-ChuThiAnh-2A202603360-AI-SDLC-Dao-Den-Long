@@ -13,9 +13,11 @@ Mở http://127.0.0.1:4173, chọn một Đêm đã mở khóa trong danh sách 
 
 Để kiểm tra tạm thời cả ba bản đồ mà không đổi tiến trình đã lưu, mở `http://127.0.0.1:4173/?testAllNights=1`.
 
-Có ba Đêm: Đảo Bến (300 giây, 5 đèn), Đảo Cau (330 giây, 6 đèn) và Đảo Chuông (360 giây, 7 đèn). Mỗi đèn cần 10 đom đóm; sức chứa là 10. Nhặt tự động trong phạm vi XZ 1 m và chênh cao tối đa 1.5 m. Tỏa Sáng tốn 3 đom đóm, tác động trong bán kính 5 m và hồi chiêu 3 giây. Đèn sáng tạo vùng an toàn bán kính 6 m. Mất Ngọn Lửa do Bóng Mực làm rơi một nửa số đom đóm đang mang; rơi khỏi đảo làm mất toàn bộ.
+Để thắng, Mây phải còn Ngọn Lửa khi bình minh lên và giữ đủ đèn sáng. Đảo Bến cần **3/5** đèn sau 240 giây, Đảo Cau cần **4/6** sau 270 giây, Đảo Chuông cần **5/7** sau 300 giây.
 
-Điểm: +10 mỗi đom đóm **nạp vào đèn**, +100 mỗi đèn thắp, +5 mỗi Bóng Mực trúng Tỏa Sáng. Khi thắng Đêm, cộng 2 điểm cho mỗi giây nguyên còn lại và 50 điểm cho mỗi Ngọn Lửa còn lại. Tổng điểm hành trình là tổng điểm các Đêm đã thắng. Hết Ngọn Lửa thì thua; hết giờ cũng thua nếu chưa thắp hết đèn.
+Đèn cần 10 đom đóm để thắp lần đầu và 5 để thắp lại. Đèn mất 1 dầu/giây và mỗi đom đóm châm thêm 10 dầu, tối đa 100. Dưới 30 dầu, đèn nhấp nháy, mất vùng an toàn và có thể bị Bóng Mực hút dầu. Sức chứa bắt đầu ở 10, tăng 2 mỗi lần thắp và tối đa 20. Có thể bật **Bảng màu dễ phân biệt** trong Cài đặt.
+
+Mỗi đom đóm nạp hoặc châm dầu được 5 điểm. Thắp lần đầu được 100, thắp lại được 40. Tỏa Sáng được 5 điểm mỗi Bóng Mực, hoặc 15 nếu nó đang hút dầu. Khi thắng, mỗi đèn sáng được 50 điểm cộng phần nguyên lượng dầu còn lại, và mỗi Ngọn Lửa còn lại được 50 điểm. Tổng điểm hành trình là tổng điểm các Đêm đã thắng.
 
 ### Kiểm chứng và headless
 
@@ -26,17 +28,17 @@ node scripts/headless.mjs --seed 42 --night 1 --ticks 480 --out run.jsonl
 
 CLI chạy bằng Node.js, không cần trình duyệt. Thêm `--scenario file.json` để dựng tình huống, `--inputs file.json` để điều khiển theo tick và `--snapshot-every N` để chọn chu kỳ snapshot. Contract và tuning nằm ở [game.contract.json](game.contract.json). Xem [bằng chứng Phase 1](docs/phase-1.md), [tiêu chí Phase 2](docs/phase-2.md) và [bước chuẩn bị](docs/checkpoint-0.md).
 
-Phase 2 contract v1.1:
+Phase 3 dùng Test Contract v1.2.
 
 ```sh
 npm test
 node scripts/verify-phase1.mjs
-node scripts/headless.mjs --seed 42 --night 1 --ticks 21600 --out night1.jsonl
-node scripts/headless.mjs --seed 42 --night 2 --ticks 21600 --out night2.jsonl
-node scripts/headless.mjs --seed 42 --night 3 --ticks 21600 --out night3.jsonl
+node scripts/headless.mjs --seed 42 --night 1 --ticks 14400 --out night1.jsonl
+node scripts/headless.mjs --seed 42 --night 2 --ticks 16200 --out night2.jsonl
+node scripts/headless.mjs --seed 42 --night 3 --ticks 18000 --out night3.jsonl
 ```
 
-Mỗi lệnh headless dừng khi Đêm kết thúc hoặc tới số tick tối đa. Test đo Đêm headless đầy đủ phải hoàn tất trong 30 giây. Acceptance criteria và bằng chứng Phase 2 ở [docs/phase-2.md](docs/phase-2.md).
+Mỗi lệnh headless dừng khi Đêm kết thúc hoặc tới số tick tối đa. Test chạy Đêm đầy đủ có giới hạn 30 giây. Xem [quyết định và bằng chứng Phase 3](docs/phase-3.md).
 
 ### Sáng tạo của tôi
 

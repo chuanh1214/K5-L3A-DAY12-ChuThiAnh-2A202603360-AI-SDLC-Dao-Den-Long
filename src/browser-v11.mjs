@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createGame, createMap, floorAt, HZ, nearbyLantern, step } from './game.mjs';
+import { carryCapacity, createGame, createMap, floorAt, HZ, lanternCost, lanternFuel, nearbyLantern, step } from './game.mjs';
 
 const byId = id => document.getElementById(id);
 const ui = {
@@ -18,6 +18,7 @@ const nightInfo = [
   { island: 'Đảo Chuông', title: 'Đêm 3 — Đảo Chuông', line: 'Ông Đăng: “Trên tầng cao nhất, tiếng chuông sẽ gọi bình minh.”' }
 ];
 const settings = {
+  accessiblePalette: localStorage.getItem('lantern-accessible-palette') === 'true',
   volume: Number(localStorage.getItem('lantern-volume') ?? 0.45),
   sensitivity: Number(localStorage.getItem('lantern-sensitivity') ?? 0.8)
 };
@@ -29,6 +30,11 @@ let highestUnlockedNight = testAllNights ? 3
 ui.volume.value = String(settings.volume);
 ui.volumeValue.textContent = `${Math.round(settings.volume * 100)}%`;
 ui.sensitivity.value = String(settings.sensitivity);
+const paletteToggle = byId('accessible-palette');
+const moteCount = byId('mote-count');
+paletteToggle.checked = settings.accessiblePalette;
+document.body.classList.toggle('accessible-palette', settings.accessiblePalette);
+const shadeAccent = () => settings.accessiblePalette ? '#00B3FF' : '#7A3CFF';
 
 let tuning;
 let renderer;
@@ -71,7 +77,7 @@ async function load() {
   const response = await fetch('/game.contract.json');
   if (!response.ok) throw new Error(`Contract request failed: ${response.status}`);
   ({ tuning } = await response.json());
-  moteSlots = Array.from({ length: tuning.carry_capacity }, () => {
+  moteSlots = Array.from({ length: tuning.capacity_max }, () => {
     const slot = document.createElement('span');
     slot.className = 'mote-slot';
     slot.setAttribute('aria-hidden', 'true');
@@ -111,6 +117,9 @@ function initScene() {
   materials.lampOff = new THREE.MeshStandardMaterial({ color: '#5B5F6E', roughness: 0.75 });
   materials.lampOn = new THREE.MeshStandardMaterial({ color: '#FFB347', emissive: '#FFB347', emissiveIntensity: 0.65 });
   materials.lampCore = new THREE.MeshStandardMaterial({ color: '#FFE9B0', emissive: '#FFB347', emissiveIntensity: 1.8 });
+  materials.fuelTrack = new THREE.MeshBasicMaterial({ color: '#120A1A' });
+  materials.fuelFill = new THREE.MeshBasicMaterial({ color: '#F2C14E' });
+  materials.lampTear = new THREE.LineBasicMaterial({ color: '#120A1A' });
   materials.mote = new THREE.MeshStandardMaterial({ color: '#FFF6C2', emissive: '#FFE58A', emissiveIntensity: 2.1 });
   materials.shade = new THREE.MeshStandardMaterial({ color: '#120A1A', emissive: '#7A3CFF', emissiveIntensity: 0.12 });
   materials.stunned = new THREE.MeshStandardMaterial({ color: '#3A3450', emissive: '#7A3CFF', emissiveIntensity: 0.22 });
@@ -160,6 +169,11 @@ function initScene() {
   ui.sensitivity.addEventListener('input', () => {
     settings.sensitivity = Number(ui.sensitivity.value);
     localStorage.setItem('lantern-sensitivity', String(settings.sensitivity));
+  });
+  paletteToggle.addEventListener('change', () => {
+    settings.accessiblePalette = paletteToggle.checked;
+    localStorage.setItem('lantern-accessible-palette', String(settings.accessiblePalette));
+    document.body.classList.toggle('accessible-palette', settings.accessiblePalette);
   });
   resize();
 }
@@ -317,20 +331,40 @@ function buildPads(level) {
 }
 
 function buildLanterns(lanterns) {
-  for (const lamp of objects.lamps.values()) world.remove(lamp.group);
+  for (const lamp of objects.lamps.values()) {
+    world.remove(lamp.group);
+    disposeObject(lamp.group);
+  }
   objects.lamps.clear();
   for (const lamp of lanterns) {
     const group = new THREE.Group();
     group.position.set(...lamp.pos);
     world.add(group);
     addMesh(group, new THREE.CylinderGeometry(0.18, 0.3, 2.6, 8), materials.wood, 0, 1.3, 0);
-    addMesh(group, new THREE.ConeGeometry(0.75, 0.4, 8), materials.wood, 0, 3.2, 0);
-    const body = addMesh(group, new THREE.CylinderGeometry(0.52, 0.44, 0.8, 8), materials.lampOff, 0, 2.7, 0);
+    const paper = new THREE.Group();
+    paper.position.y = 2.3;
+    group.add(paper);
+    addMesh(paper, new THREE.ConeGeometry(0.75, 0.4, 8), materials.wood, 0, 0.9, 0);
+    const body = addMesh(paper, new THREE.CylinderGeometry(0.52, 0.44, 0.8, 8), materials.lampOff, 0, 0.4, 0);
+    const tear = new THREE.Group();
+    for (let side = 0; side < 4; side += 1) {
+      const points = [[-0.12, 0.66], [0.03, 0.49], [-0.05, 0.42], [0.1, 0.2]]
+        .map(([x, y]) => new THREE.Vector3(x, y, 0.51));
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), materials.lampTear);
+      line.rotation.y = side * Math.PI / 2;
+      tear.add(line);
+    }
+    paper.add(tear);
     const core = addMesh(group, new THREE.SphereGeometry(0.21, 10, 8), materials.lampCore, 0, 2.7, 0);
     const light = new THREE.PointLight('#FFB347', 0, 13, 2);
     light.position.y = 2.9;
     group.add(light);
-    objects.lamps.set(lamp.id, { group, body, core, light });
+    const meter = new THREE.Group();
+    meter.position.y = 3.7;
+    group.add(meter);
+    addMesh(meter, new THREE.PlaneGeometry(1.3, 0.17), materials.fuelTrack);
+    const fill = addMesh(meter, new THREE.PlaneGeometry(1.2, 0.09), materials.fuelFill, 0, 0, 0.01);
+    objects.lamps.set(lamp.id, { group, paper, body, tear, core, light, meter, fill });
   }
 }
 
@@ -378,12 +412,13 @@ function syncScene(now) {
     }));
     outline.position.y = 0;
     for (const x of [-0.2, 0.2]) addMesh(shade, new THREE.SphereGeometry(0.07, 8, 6),
-      new THREE.MeshBasicMaterial({ color: '#F2C14E' }), x, 0.12, 0.54);
+      new THREE.MeshBasicMaterial({ color: '#7A3CFF' }), x, 0.12, 0.54);
     return shade;
   }, (shade, object, index) => {
     object.position.set(shade.pos[0], shade.pos[1] + 0.72 + Math.sin(now / 230 + index) * 0.1, shade.pos[2]);
     object.rotation.y = Math.atan2(game.player.pos[0] - shade.pos[0], game.player.pos[2] - shade.pos[2]);
     object.children[0].material = shade.state === 'stunned' ? materials.stunned : materials.shade;
+    for (const accent of object.children.slice(1)) accent.material.color.set(shadeAccent());
   });
   syncEntities(game.drifters, objects.drifters, () => {
     const group = new THREE.Group();
@@ -403,12 +438,23 @@ function syncScene(now) {
     object.position.set(charm.pos[0], charm.pos[1] + 0.55 + Math.sin(now / 330 + index) * 0.1, charm.pos[2]);
     object.rotation.y = now / 500;
   });
+  camera.position.set(pos[0] - 9 * Math.sin(yaw), pos[1] + 6, pos[2] - 9 * Math.cos(yaw));
+  camera.lookAt(pos[0] + 3 * Math.sin(yaw), pos[1] + 1.25, pos[2] + 3 * Math.cos(yaw));
   let lit = 0;
   for (const lamp of game.lanterns) {
     const view = objects.lamps.get(lamp.id);
-    view.body.material = lamp.lit ? materials.lampOn : materials.lampOff;
-    view.core.visible = lamp.lit;
-    view.light.intensity = lamp.lit ? 38 : 0;
+    const fuel = lanternFuel(lamp);
+    const low = lamp.lit && fuel < tuning.low_fuel_threshold;
+    const bright = !low || now % 1000 < 500;
+    view.body.material = lamp.lit && bright ? materials.lampOn : materials.lampOff;
+    view.paper.scale.y = lamp.lit ? 1 : 0.8;
+    view.tear.visible = !lamp.lit;
+    view.core.visible = lamp.lit && bright;
+    view.light.intensity = lamp.lit ? (bright ? 38 : 12) : 0;
+    view.meter.visible = lamp.lit && bright;
+    view.meter.quaternion.copy(camera.quaternion);
+    view.fill.scale.x = fuel / tuning.fuel_max;
+    view.fill.position.x = 0.6 * (view.fill.scale.x - 1);
     lit += Number(lamp.lit);
   }
   ambient.intensity = 0.15 + 0.55 * lit / game.lanterns.length;
@@ -419,8 +465,6 @@ function syncScene(now) {
     pulseRing.scale.setScalar(Math.max(0.05, pulseAge * tuning.pulse_radius));
     pulseRing.material.opacity = 1 - pulseAge;
   }
-  camera.position.set(pos[0] - 9 * Math.sin(yaw), pos[1] + 6, pos[2] - 9 * Math.cos(yaw));
-  camera.lookAt(pos[0] + 3 * Math.sin(yaw), pos[1] + 1.25, pos[2] + 3 * Math.cos(yaw));
   updateHud(lit);
 }
 
@@ -428,22 +472,31 @@ function updateHud(lit) {
   const p = game.player;
   const remaining = Math.max(0, Math.ceil(game.time));
   ui.night.textContent = `Đêm ${game.night} · ${nightInfo[game.night - 1].island}`;
-  ui.timer.textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
+  const warningIcon = remaining <= 30 && settings.accessiblePalette ? '⚠ ' : '';
+  ui.timer.textContent = `${warningIcon}${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
   ui.timer.classList.toggle('urgent', remaining <= 30);
   ui.flames.textContent = '◆'.repeat(p.flames) + '◇'.repeat(Math.max(0, tuning.flames - p.flames));
   const near = nearbyLantern(game);
-  const lanternCount = `Đèn ${lit}/${game.lanterns.length}`;
-  ui.lanterns.textContent = near
-    ? `${lanternCount} · ${near.id} ${near.deposited}/${tuning.lantern_cost}`
-    : lanternCount;
+  const required = Math.ceil(tuning.win_ratio * game.lanterns.length);
+  ui.lanterns.textContent = `Đèn ${lit}/${game.lanterns.length} · Bình minh cần ${required}`;
   ui.score.textContent = `${scoreBase + game.score} điểm`;
-  moteSlots.forEach((slot, index) => slot.classList.toggle('filled', index < p.carried));
+  const capacity = carryCapacity(tuning, p.successfulLights);
+  moteCount.textContent = `Đom đóm ${p.carried}/${capacity}`;
+  moteSlots.forEach((slot, index) => {
+    slot.hidden = index >= capacity;
+    slot.classList.toggle('filled', index < p.carried);
+  });
   dashAbility.textContent = `⇢ Lướt ${p.charmTicks ? '∞' : `${(p.dashCd / HZ).toFixed(1)}s`}`;
   dashAbility.classList.toggle('cooldown', p.dashCd > 0);
   pulseAbility.textContent = `✦ Tỏa sáng ${(p.pulseCd / HZ).toFixed(1)}s`;
   pulseAbility.classList.toggle('cooldown', p.pulseCd > 0);
   const prompts = [];
-  if (near && active) prompts.push(`E — Nạp ánh sáng (${p.carried}/${tuning.lantern_cost}) · ${near.id} đã nạp ${near.deposited}/${tuning.lantern_cost}`);
+  if (near && active) {
+    const cost = lanternCost(tuning, near);
+    prompts.push(near.lit
+      ? `E — Châm dầu · ${near.id} còn ${Math.floor(lanternFuel(near))}/${tuning.fuel_max}`
+      : `E — ${near.ever_lit ? 'Thắp lại' : 'Nạp ánh sáng'} · ${near.id} ${near.deposited}/${cost}`);
+  }
   ui.prompt.textContent = prompts.join(' · ');
   const cycle = game.simTick % 1800;
   const warning = game.night === 3 && cycle >= 1680 && cycle < 1800;
@@ -453,7 +506,7 @@ function updateHud(lit) {
 }
 
 function updateTarget() {
-  const target = game.lanterns.filter(lamp => !lamp.lit)
+  const target = game.lanterns.filter(lamp => !lamp.lit || lanternFuel(lamp) < tuning.low_fuel_threshold)
     .sort((a, b) => distanceXZ(game.player.pos, a.pos) - distanceXZ(game.player.pos, b.pos))[0];
   if (!target) {
     ui.target.hidden = true;
@@ -527,7 +580,7 @@ function showIntro(level) {
   }
   night = level;
   const info = nightInfo[level - 1];
-  showOverlay(info.title, info.line, [
+  showOverlay(info.title, `${info.line} Hãy giữ ít nhất ${[3, 4, 5][level - 1]} đèn sáng tới bình minh.`, [
     { label: `Bắt đầu Đêm ${level}`, action: () => startNight(level) },
     { label: 'Về menu', action: showMenu, secondary: true }
   ], { eyebrow: 'Lời Ông Đăng' });
@@ -579,7 +632,7 @@ function showResult() {
     return;
   }
   if (night < 3) {
-    showOverlay('Đảo đã sáng!', `Đã thắp hết đèn ở ${info.island}. Điểm đêm này: ${game.score}. Tiếp tục để xem lời dẫn Đêm ${night + 1}, rồi bắt đầu Đêm đó.`, [
+    showOverlay('Đảo sáng tới bình minh!', `${info.island} còn ${game.lanterns.filter(lamp => lamp.lit).length} đèn sáng. Điểm đêm này: ${game.score}.`, [
       { label: `Tiếp tục Đêm ${night + 1}`, action: () => showIntro(night + 1) },
       { label: 'Về menu', action: showMenu, secondary: true }
     ], { eyebrow: `Tổng điểm ${totalScore}` });
@@ -658,7 +711,7 @@ function startMusic() {
 function sound(name) {
   if (!audio || settings.volume <= 0) return;
   const notes = {
-    mote_picked: [740, 0.08], deposit: [420, 0.12], lantern_lit: [880, 0.28],
+    mote_picked: [740, 0.08], deposit: [420, 0.12], refuel: [420, 0.12], lantern_lit: [880, 0.28],
     pulse: [290, 0.16], player_hit: [115, 0.28], dash: [560, 0.09],
     shade_spawned: [180, 0.32], charm_picked: [980, 0.2], won: [660, 0.45],
     lost: [140, 0.55], countdown: [520, 0.12], jump: [360, 0.08], warning: [260, 0.25]
@@ -691,7 +744,7 @@ function handleEvents(events) {
   for (const event of events) {
     if (event.name === 'mote_picked' || event.name === 'lantern_lit' || event.name === 'pulse'
       || event.name === 'player_hit' || event.name === 'dash' || event.name === 'shade_spawned'
-      || event.name === 'charm_picked' || event.name === 'deposit') sound(event.name);
+      || event.name === 'charm_picked' || event.name === 'deposit' || event.name === 'refuel') sound(event.name);
     if (event.name === 'pulse') pulseAt = performance.now();
     if (event.name === 'paused') showPause();
     if (event.name === 'game_over') {

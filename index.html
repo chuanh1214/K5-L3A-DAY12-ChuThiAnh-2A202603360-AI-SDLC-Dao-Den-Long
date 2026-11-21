@@ -19,7 +19,7 @@
   <div class="bottom">
     <div id="prompt" aria-live="polite"></div>
     <div class="hud-bottom">
-      <div class="mote-meter"><span>Đom đóm</span><div id="mote-slots" aria-label="Sức chứa đom đóm"></div></div>
+      <div class="mote-meter"><span id="mote-count">Đom đóm</span><div id="mote-slots" aria-hidden="true"></div></div>
       <div id="abilities" class="abilities"></div>
     </div>
     <div class="controls">WASD di chuyển · ← → xoay camera · Space nhảy · Shift lướt · E nạp đèn · Q xua Bóng Mực (tốn 3 đom đóm) · Esc/P tạm dừng</div>
@@ -33,6 +33,7 @@
       <div id="settings-panel" class="settings-panel" hidden>
         <label>Âm lượng <output id="volume-value"></output><input id="volume" type="range" min="0" max="1" step="0.05"></label>
         <label>Độ nhạy chuột <input id="sensitivity" type="range" min="0.25" max="2" step="0.05"></label>
+        <label>Bảng màu dễ phân biệt <input id="accessible-palette" type="checkbox"></label>
       </div>
       <div id="menu-buttons" class="menu-buttons"></div>
     </div>

@@ -27,6 +27,7 @@ body { margin: 0; overflow: hidden; }
 .clock { text-align: center; }
 .score { text-align: right; }
 .urgent { color: #FF5A5F; animation: blink .7s steps(2, start) infinite; }
+.accessible-palette .urgent { color: #FFFFFF; }
 @keyframes blink { to { visibility: hidden; } }
 .bottom {
   position: fixed;
@@ -106,6 +107,7 @@ button:focus-visible { outline: 3px solid #FFE9B0; outline-offset: 4px; }
 .settings-panel label { display: grid; grid-template-columns: 1fr auto; gap: 6px; color: #F5F1E6; }
 .settings-panel output { color: #F2C14E; font-variant-numeric: tabular-nums; }
 .settings-panel input { grid-column: 1 / -1; width: 100%; accent-color: #FFB347; }
+.settings-panel input[type="checkbox"] { grid-column: 2; width: auto; }
 .target-arrow {
   position: fixed;
   z-index: 1;

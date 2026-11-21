@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { createGame, idle, snapshot, step } from '../src/game.mjs';
+import { carryCapacity, createGame, idle, lanternCost, snapshot, step } from '../src/game.mjs';
 
 class DataError extends Error {}
 const scenarioFields = [
@@ -43,10 +43,12 @@ function validateScenario(scenario, tuning, night) {
   optional(scenario, 'time_left_s', value => number(value) && value >= 0);
   if ('player' in scenario) {
     shape(scenario.player, [
-      'pos', 'carried', 'flames', 'invuln_ticks', 'dash_cd_ticks', 'pulse_cd_ticks', 'charm_ticks'
+      'pos', 'carried', 'flames', 'invuln_ticks', 'dash_cd_ticks', 'pulse_cd_ticks', 'charm_ticks', 'successful_lights'
     ], 'player');
     optional(scenario.player, 'pos', value => vector(value, 3));
-    optional(scenario.player, 'carried', value => integer(value) && value <= tuning.carry_capacity);
+    optional(scenario.player, 'successful_lights', integer);
+    optional(scenario.player, 'carried', value => integer(value)
+      && value <= carryCapacity(tuning, scenario.player.successful_lights ?? 0));
     optional(scenario.player, 'flames', integer);
     for (const key of ['invuln_ticks', 'dash_cd_ticks', 'pulse_cd_ticks', 'charm_ticks']) {
       optional(scenario.player, key, integer);
@@ -57,10 +59,12 @@ function validateScenario(scenario, tuning, night) {
   }
   if ('shades' in scenario) {
     list(scenario.shades, shade => {
-      shape(shade, ['id', 'pos', 'state', 'state_ticks_left'], 'shade');
+      shape(shade, ['id', 'pos', 'state', 'state_ticks_left', 'target_lantern_id'], 'shade');
       optional(shade, 'id', id => typeof id === 'string' && id.length > 0);
       check(vector(shade.pos, 3), 'shade: missing or invalid pos');
-      optional(shade, 'state', value => ['spawning', 'wander', 'chase', 'recoil', 'stunned'].includes(value));
+      optional(shade, 'state', value => ['spawning', 'wander', 'chase', 'recoil', 'stunned', 'drain'].includes(value));
+      optional(shade, 'target_lantern_id', id => typeof id === 'string'
+        && /^L[1-7]$/.test(id) && Number(id.slice(1)) <= [5, 6, 7][night - 1]);
       optional(shade, 'state_ticks_left', integer);
     }, 'shades');
     unique(scenario.shades, 'shades');
@@ -88,12 +92,15 @@ function validateScenario(scenario, tuning, night) {
   }
   if ('lanterns' in scenario) {
     list(scenario.lanterns, lamp => {
-      shape(lamp, ['id', 'pos', 'deposited', 'lit'], 'lantern');
+      shape(lamp, ['id', 'pos', 'deposited', 'lit', 'fuel', 'ever_lit'], 'lantern');
       check(/^L[1-7]$/.test(lamp.id) && Number(lamp.id.slice(1)) <= [5, 6, 7][night - 1],
         'lantern: unknown id for this night');
       optional(lamp, 'pos', value => vector(value, 3));
-      optional(lamp, 'deposited', value => integer(value) && value <= tuning.lantern_cost);
+      optional(lamp, 'deposited', value => integer(value)
+        && value <= (lamp.lit ? tuning.lantern_cost : lanternCost(tuning, lamp)));
       optional(lamp, 'lit', boolean);
+      optional(lamp, 'ever_lit', boolean);
+      optional(lamp, 'fuel', value => number(value) && value >= 0 && value <= tuning.fuel_max);
     }, 'lanterns');
     unique(scenario.lanterns, 'lanterns');
   }
