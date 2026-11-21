@@ -11,10 +11,7 @@ export const idle = {
 };
 const radians = degrees => degrees * Math.PI / 180;
 const PLAYER_BODY_RADIUS = 0.68;
-const BODY_EDGE_OFFSETS = Array.from({ length: 16 }, (_, index) => {
-  const angle = index * Math.PI / 8;
-  return [Math.cos(angle) * PLAYER_BODY_RADIUS, Math.sin(angle) * PLAYER_BODY_RADIUS];
-});
+const NIGHT3_RAMPS = [30, 150].map(degrees => [Math.cos(radians(degrees)), Math.sin(radians(degrees))]);
 const point = (radius, degrees, x = 0, z = 0, y = 0) => {
   const angle = radians(degrees);
   return [x + radius * Math.cos(angle), y, z + radius * Math.sin(angle)];
@@ -195,10 +192,9 @@ function night3SurfaceAt(x, z) {
 }
 
 function rampHeightAt(x, z) {
-  for (const rampAngle of [30, 150]) {
-    const angle = radians(rampAngle);
-    const along = x * Math.cos(angle) + z * Math.sin(angle);
-    const across = z * Math.cos(angle) - x * Math.sin(angle);
+  for (const [cos, sin] of NIGHT3_RAMPS) {
+    const along = x * cos + z * sin;
+    const across = z * cos - x * sin;
     if (along >= 23.95 && along <= 30 && Math.abs(across) <= 1.5) {
       return Math.min(3, (30 - along) / 2);
     }
@@ -241,41 +237,64 @@ function moveHorizontal(game, vector, speed) {
   player.vel[2] = direction[1] * speed;
 }
 
-function blockNight3Walls(player, startX, startZ, followsRamp) {
-  const [x, y, z] = player.pos;
-  const rise = night3SurfaceAt(x, z) - y;
-  const stride = Math.hypot(x - startX, z - startZ);
-  const ramp = rampHeightAt(x, z);
-  const previousRamp = rampHeightAt(startX, startZ);
-  const canClimb = followsRamp && (ramp !== null || previousRamp !== null)
-    && rise <= stride / 2 + 0.001;
-  // The default spawn is on the ground below the bell platform.
+function terraceClearance(x, z) {
+  if (z >= 0) {
+    const radius = Math.hypot(x, z);
+    return Math.max(12 - radius, radius - 24, -z);
+  }
+  return Math.hypot(Math.max(12 - Math.abs(x), Math.abs(x) - 24, 0), z);
+}
+
+function rampClearance(x, z, y, cos, sin) {
+  const along = x * cos + z * sin;
+  const across = z * cos - x * sin;
+  const radialGap = Math.max(23.95 - along, along - (30 - Math.max(0, y) * 2));
+  const sideGap = Math.abs(across) - 1.5;
+  if (radialGap <= 0 || sideGap <= 0) return Math.max(radialGap, sideGap);
+  return Math.hypot(radialGap, sideGap);
+}
+
+function canMoveOnNight3(startX, startZ, x, z, y, followsRamp) {
+  const epsilon = 0.001;
+  // A foot leaving a ledge can briefly overlap its side. Allow steps that lead out.
+  const clear = (previous, next) => next >= PLAYER_BODY_RADIUS - epsilon || next >= previous - 1e-9;
   const startRadius = Math.hypot(startX, startZ);
-  const nextRadius = Math.hypot(x, z);
-  const belowBellPlatform = y < 6 && startRadius <= 8 && nextRadius <= 8;
-  const leavingBellPlatform = startRadius < 8 + PLAYER_BODY_RADIUS && nextRadius > startRadius;
-  const hitsTower = y >= 6 && y < 14 && nextRadius < 2 + PLAYER_BODY_RADIUS;
-  const hitsTerrain = BODY_EDGE_OFFSETS.some(([dx, dz]) => {
-    const edgeX = x + dx;
-    const edgeZ = z + dz;
-    const edgeHeight = night3SurfaceAt(edgeX, edgeZ);
-    if (edgeHeight <= y + 0.001) return false;
-    if ((belowBellPlatform || leavingBellPlatform) && edgeHeight === 6) return false;
-    const edgeRamp = rampHeightAt(edgeX, edgeZ);
-    if (edgeRamp !== null && edgeHeight === edgeRamp && followsRamp) {
-      return edgeHeight - y > (stride + PLAYER_BODY_RADIUS) / 2 + 0.001;
-    }
-    // The player's body reaches the terrace before their feet reach the ramp crest.
-    return !(canClimb && ramp !== null && edgeHeight === 3
-      && edgeHeight - y <= (stride + PLAYER_BODY_RADIUS) / 2 + 0.001);
+  const radius = Math.hypot(x, z);
+  if (y >= 6 && y < 14 && !clear(startRadius - 2, radius - 2)) return false;
+  if (y < 6 && startRadius > 8 && !clear(startRadius - 8, radius - 8)) return false;
+  if (y >= 3) return true;
+
+  const startRamp = rampHeightAt(startX, startZ);
+  const endRamp = rampHeightAt(x, z);
+  const stride = Math.hypot(x - startX, z - startZ);
+  const walkSlope = followsRamp && endRamp !== null && endRamp <= y + stride / 2 + epsilon;
+  const leavesCrest = followsRamp && startRamp !== null && 3 - y <= stride / 2 + epsilon;
+  const joinsCrest = walkSlope && 3 - endRamp <= PLAYER_BODY_RADIUS / 2 + epsilon;
+  if (!leavesCrest && !joinsCrest && !clear(terraceClearance(startX, startZ), terraceClearance(x, z))) {
+    return false;
+  }
+  if (walkSlope) return true;
+  return NIGHT3_RAMPS.every(([cos, sin]) => {
+    const along = x * cos + z * sin;
+    const across = z * cos - x * sin;
+    const approachingFoot = followsRamp && along >= 30 && Math.abs(across) <= 1.5;
+    return approachingFoot || clear(rampClearance(startX, startZ, y, cos, sin), rampClearance(x, z, y, cos, sin));
   });
-  if (hitsTower || hitsTerrain || (rise > 0.001 && !canClimb && !belowBellPlatform)) {
-    player.pos[0] = startX;
-    player.pos[2] = startZ;
-    if (!player.launchLocked) {
-      player.vel[0] = 0;
-      player.vel[2] = 0;
-    }
+}
+
+function slideAlongNight3Walls(player, startX, startZ, followsRamp) {
+  const [x, y, z] = player.pos;
+  if (canMoveOnNight3(startX, startZ, x, z, y, followsRamp)) return;
+  const xFirst = Math.abs(x - startX) > Math.abs(z - startZ);
+  const candidates = [[x, startZ], [startX, z]];
+  if (!xFirst) candidates.reverse();
+  const [nextX, nextZ] = candidates.find(([tx, tz]) =>
+    canMoveOnNight3(startX, startZ, tx, tz, y, followsRamp)) ?? [startX, startZ];
+  player.pos[0] = nextX;
+  player.pos[2] = nextZ;
+  if (!player.launchLocked) {
+    if (nextX === startX) player.vel[0] = 0;
+    if (nextZ === startZ) player.vel[2] = 0;
   }
 }
 
@@ -344,11 +363,15 @@ function movePlayer(game, input, pressed, emit) {
     player.pos[2] += Math.sin(windAngle) * 2 / HZ;
   }
   const followsRamp = game.night === 3 && wasGrounded && !pressed('jump');
-  if (game.night === 3) blockNight3Walls(player, startX, startZ, followsRamp);
-  const ramp = game.night === 3 ? rampHeightAt(player.pos[0], player.pos[2]) : null;
-  if (followsRamp && ramp !== null && player.pos[1] <= 3) {
-    player.pos[1] = night3SurfaceAt(player.pos[0], player.pos[2]);
-    player.vel[1] = 0;
+  if (game.night === 3) slideAlongNight3Walls(player, startX, startZ, followsRamp);
+  if (followsRamp && player.pos[1] <= 3) {
+    const [nextX, , nextZ] = player.pos;
+    const surface = night3SurfaceAt(nextX, nextZ);
+    const reachedTerrace = surface === 3 && rampHeightAt(startX, startZ) !== null;
+    if (rampHeightAt(nextX, nextZ) !== null || reachedTerrace) {
+      player.pos[1] = surface;
+      player.vel[1] = 0;
+    }
   }
   if (!dashing) {
     if (pressed('jump') && player.grounded) {

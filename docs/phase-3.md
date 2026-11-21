@@ -25,3 +25,11 @@ Test nạp đèn giữ kiểm tra số đom đóm và bổ sung cờ `relight`. 
 - `node scripts/verify-phase1.mjs` chạy thành công `hello-headless` và 25/25 test trong 6,35 giây. Test chạy đủ ba Đêm theo thời lượng mới mất 0,56 giây tổng cộng và xác nhận mỗi lượt dưới 30 giây.
 - `node --check src/browser-v11.mjs` và `git diff --check` chạy thành công.
 - Chrome headless chạy WebGL2 bằng SwiftShader trên bản phục vụ cục bộ. Bài thử mở Đêm 1, dựng trạng thái dầu và bật tùy chọn màu qua sự kiện giao diện. Kết quả PASS cho các mục trình duyệt trong bảng. Bộ test ẩn của giảng viên chưa chạy.
+
+## Hồi quy địa hình Đêm 3 từ Phase 2
+
+Va chạm tính khoảng cách tới biên tầng và mặt bên dốc theo hình dạng trong mô phỏng. Khi một hướng bị vách cản, Mây vẫn có thể di chuyển theo trục còn lại. Khi đáp sát mép, Mây có thể bước ra khỏi phần va chạm đang chồng lên vách. Bán kính va chạm tiếp tục là 0,68 m.
+
+`node scripts/verify-phase1.mjs` đạt 29/29 trong 6,78 giây, gồm trường hợp bước cuối rời mặt dốc và phải đáp ngay lên tầng giữa ở Y=3, đi ra khỏi mép dốc rồi tiếp tục di chuyển sau khi đáp, đi dọc vách khi gió ép vào và đi cách vách khoảng 0,7 m. Các test chặn vách, bục nhảy và chạy đủ ba Đêm dưới 30 giây mỗi Đêm đều đạt.
+
+Chrome headless với WebGL2 chạy bài thử điều khiển tự động. Lần thử trước bản sửa phát hiện Mây tụt xuống ở bước cuối từ dốc sang tầng giữa. Sau khi sửa, bài thử đạt các chặng từ chân dốc lên Y=3, qua bục nhảy đáp Y=6, rời mép dốc đáp Y=0 rồi đi tiếp, đi dọc vách khi có gió và đi sát vách ở khoảng 0,7 m. Các tình huống dùng tọa độ xuất phát dựng sẵn để lặp lại. Chưa chơi thủ công hết Đêm 3.

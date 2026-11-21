@@ -407,6 +407,18 @@ test('Night 3 ramp supports a slightly off-center climb onto the middle tier', t
   assert.ok(player.pos[1] >= 2.99, JSON.stringify(player));
 });
 
+test('Night 3 steps onto the terrace when the final stride clears the ramp footprint', t => {
+  const output = execute(t, {
+    night: 3,
+    scenario: scenarioWith({ player: { pos: [26.067, 0, 15.1] }, wind_enabled: false }),
+    frames: [{ tick: 0, move: [0, 1], cam_yaw_deg: 240 }],
+    ticks: 70
+  });
+  const player = output.snapshots.at(-1).player;
+  assert.equal(player.pos[1], 3);
+  assert.ok(player.grounded);
+});
+
 test('Night 3 walls block entry from below but allow stepping down', t => {
   for (const { pos, move, dash = false } of [
     { pos: [0, 0, 25], move: [0, -1], dash: true },
@@ -433,6 +445,53 @@ test('Night 3 walls block entry from below but allow stepping down', t => {
     snapshotEvery: 45
   });
   assert.equal(drop.snapshots.at(-1).player.pos[1], 0);
+});
+
+test('Night 3 can leave the ramp side and move freely after landing', t => {
+  const cos = Math.sqrt(3) / 2;
+  const sin = 0.5;
+  const output = execute(t, {
+    night: 3,
+    scenario: scenarioWith({
+      player: { pos: [27 * cos - 1.45 * sin, 1.5, 27 * sin + 1.45 * cos] },
+      wind_enabled: false
+    }),
+    frames: [{ tick: 0, move: [-sin, cos] }, { tick: 1, move: [0, 0] },
+      { tick: 35, move: [-sin, cos] }],
+    ticks: 65
+  });
+  const landed = output.snapshots[35].player;
+  const end = output.snapshots.at(-1).player;
+  assert.ok(landed.grounded);
+  assert.equal(end.pos[1], 0);
+  assert.ok(end.pos[2] - landed.pos[2] > 2.5);
+});
+
+test('Night 3 keeps tangential movement when wind pushes against the terrace', t => {
+  const output = execute(t, {
+    night: 3,
+    scenario: scenarioWith({ player: { pos: [-24.7, 0, 0.2] }, wind_enabled: true }),
+    frames: [{ tick: 0, move: [0, 1] }],
+    ticks: 35
+  });
+  const end = output.snapshots.at(-1);
+  assert.equal(end.wind.active, true);
+  assert.equal(end.player.pos[1], 0);
+  assert.ok(end.player.pos[2] > 3.6);
+  assert.ok(Math.hypot(end.player.pos[0], end.player.pos[2]) >= 24.67);
+});
+
+test('Night 3 can follow the terrace wall within one metre without clipping it', t => {
+  const output = execute(t, {
+    night: 3,
+    scenario: scenarioWith({ player: { pos: [18, 0, -0.7] }, wind_enabled: false }),
+    frames: [{ tick: 0, move: [-1, 1] }],
+    ticks: 40
+  });
+  const { pos: [x, y, z] } = output.snapshots.at(-1).player;
+  assert.ok(x < 15.5);
+  assert.equal(y, 0);
+  assert.ok(z >= -0.8 && z <= -0.67);
 });
 
 test('Night 3 launch pad reaches the bell platform with and without an air dash', t => {
